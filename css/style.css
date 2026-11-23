@@ -347,3 +347,22 @@ details summary { cursor: pointer; color: var(--muted); font-size: .85rem; } .wa
 .mrow .mi-n { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 .mrow .mi-n b { overflow-wrap: anywhere; } .mrow .tag { white-space: nowrap; flex: none; }
 .mrow .row.wrap { gap: 6px; }
+
+/* ---------- Hướng dẫn sử dụng ---------- */
+.guide { display: flex; flex-direction: column; gap: 12px; }
+.gd-toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.gd-tocb { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 12px; background: var(--field); border: 1px solid var(--line); font-size: .88rem; line-height: 1.25; transition: .15s; }
+.gd-tocb:hover { border-color: var(--accent); }
+.guide .n { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: .78rem; font-weight: 700; }
+.gd-body { display: flex; flex-direction: column; gap: 22px; }
+.gd-sec h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: 1.08rem; }
+.gd-sec p { margin: 6px 0; line-height: 1.6; }
+.gd-sub { margin: 14px 0 4px; font-size: .98rem; color: var(--accent); }
+.gd-list, .gd-steps { margin: 6px 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; line-height: 1.55; }
+.gd-steps li::marker { font-weight: 700; color: var(--accent); }
+.gd-note { display: flex; gap: 10px; align-items: baseline; margin: 10px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--glass2); font-size: .92rem; line-height: 1.5; }
+.gd-note b { flex: none; padding: 1px 9px; border-radius: 999px; font-size: .78rem; background: var(--accent); color: var(--on-accent); }
+.gd-note.warn { border-color: var(--busy); } .gd-note.warn b { background: var(--busy); color: #3b0d19; }
+.gd-note.tip { border-color: var(--free); } .gd-note.tip b { background: var(--free); color: #053b27; }
+.modal.wide .guide { min-width: 0; }
+@media (max-width: 520px) { .gd-toc { grid-template-columns: 1fr 1fr; } }

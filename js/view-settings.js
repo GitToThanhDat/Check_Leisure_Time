@@ -14,7 +14,7 @@
   S.update = function (k) { if ((k.members || k.meta) && !S.busy) S.draw(); };
   S.draw = function () {
     var el = U.clear(S.el), me = A.me;
-    el.appendChild(h('div.settings', profile(me), look(), notif(), importCard(), room()));
+    el.appendChild(h('div.settings', guideCard(), profile(me), look(), notif(), importCard(), room()));
   };
 
   /* ---- Hồ sơ ---- */
@@ -69,6 +69,11 @@
     var txt = { granted: 'Đã bật popup khi bạn bị tag lúc tab ở dưới nền.', denied: 'Trình duyệt đang chặn thông báo. Hãy mở cài đặt trang web để cho phép.', default: 'Chưa bật. Bật để có popup khi ai đó tag/rủ bạn.', unsupported: 'Trình duyệt này không hỗ trợ popup thông báo.' }[perm];
     return sec('Thông báo', 'Khi ai đó tag @bạn hoặc rủ bạn đi chơi, bạn sẽ nhận chuông + chấm đỏ trong web, và popup nếu bạn bật. Lưu ý: bản miễn phí chỉ báo được khi web đang mở (kể cả ở tab nền).',
       h('div', h('p.sm', txt), perm === 'default' ? h('button.btn.sm.primary', { onclick: function () { Notification.requestPermission().then(function () { S.draw(); }); } }, U.icon('bell', 16), 'Bật popup thông báo') : null));
+  }
+
+  function guideCard() {
+    return sec('Hướng dẫn sử dụng', 'Dành cho người mới: cách dùng từ đầu đến cuối, trình bày từng bước dễ hiểu.',
+      h('div.row', h('button.btn.primary', { onclick: function () { Guide.open(); } }, U.icon('book', 16), 'Mở hướng dẫn')));
   }
 
   function importCard() {

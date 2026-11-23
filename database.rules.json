@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$room": {
+        ".read": true,
+        ".write": true,
+        "meta": {
+          ".validate": "newData.hasChildren(['name', 'owner']) && newData.child('name').isString() && newData.child('name').val().length <= 60"
+        },
+        "members": {
+          "$member": {
+            ".validate": "newData.hasChildren(['name', 'ph']) && newData.child('name').isString() && newData.child('name').val().length <= 24"
+          }
+        },
+        "chats": {
+          "$channel": {
+            "$msg": {
+              ".validate": "newData.hasChildren(['by', 'txt', 'ts']) && newData.child('txt').isString() && newData.child('txt').val().length <= 1200"
+            }
+          }
+        }
+      }
+    }
+  }
+}

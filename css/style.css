@@ -338,3 +338,12 @@ details summary { cursor: pointer; color: var(--muted); font-size: .85rem; } .wa
 .dragmode { margin-left: auto; }
 
 .icon-btn.starred { color: #f5b301; } .icon-btn.starred svg { fill: currentColor; }
+
+/* ===== Thẻ phòng rộng, chia hai cột ===== */
+.st-room { grid-column: 1 / -1; }
+.rm-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px 28px; }
+@media (min-width: 760px) { .rm-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); } }
+.rm-r h4 { margin-top: 0; }
+.mrow .mi-n { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.mrow .mi-n b { overflow-wrap: anywhere; } .mrow .tag { white-space: nowrap; flex: none; }
+.mrow .row.wrap { gap: 6px; }

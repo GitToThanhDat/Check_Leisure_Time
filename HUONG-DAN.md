@@ -13,7 +13,7 @@ Web này là các file tĩnh (HTML/CSS/JS), dữ liệu đồng bộ qua **Fireb
 | `js/store.js` | Kết nối Firebase (đăng nhập + dữ liệu), hoặc chế độ thử lưu trong trình duyệt |
 | `js/app.js`, `view-*.js`, `import.js`, `bg.js`, `util.js` | Các màn hình và tính năng |
 | `database.rules.json` | Luật bảo mật dán vào Firebase (**bản mới, dùng tài khoản**) |
-| `tools/seed-demo.html` | Trang tạo dữ liệu mẫu (phòng "Ổ Rắn Độc A1" + 3 tài khoản AI Test) |
+| `tools/seed-demo.html` | Trang tạo dữ liệu mẫu (phòng "Phòng thử nghiệm" + 3 tài khoản AI Test) |
 | `tests/` | Test tự động (không bắt buộc): `schedule.test.js`, `e2e*.py` |
 
 ## 1. Thử ngay trên máy (chưa cần Firebase)
@@ -35,7 +35,7 @@ Giao diện Firebase đôi khi đổi tên nút một chút, nhưng các bước
    - Location: chọn **Singapore (asia-southeast1)** cho gần Việt Nam.
    - Security rules: chọn **Start in locked mode** (sẽ dán luật ở bước sau).
    - Không có bước nào đòi thẻ. Nếu thấy yêu cầu nâng cấp gói Blaze thì bạn đang bấm nhầm sang Firestore/Functions/Storage; Realtime Database dùng gói Spark là đủ.
-3. Vào tab **Rules** của Realtime Database, xoá nội dung cũ, **dán toàn bộ nội dung file `database.rules.json`**, bấm **Publish**. (Nếu trước đây bạn đã dán luật cũ, kể cả bản tài khoản đầu tiên, **hãy dán lại bản mới**: bản này thêm mục `names` để giữ tên duy nhất cho cả đăng nhập Google.)
+3. Vào tab **Rules** của Realtime Database, xoá nội dung cũ, **dán toàn bộ nội dung file `database.rules.json`**, bấm **Publish**. (Nếu trước đây bạn đã dán luật cũ, kể cả bản tài khoản đầu tiên, **hãy dán lại bản mới**: bản này có mục `names` (giữ tên duy nhất cho cả Google), mục `secret` (mã mời bí mật) và luật cho phó phòng.)
 4. **Bật đăng nhập bằng tài khoản (bắt buộc):** menu trái **Build → Authentication → Get started → Sign-in method**.
    - Bật **Email/Password** (chỉ mục đầu tiên, không cần "Email link") → Save. Web không gửi email thật: tên đăng nhập được đổi thành email giả dạng `ten@ranhchua.app`, nên **không có quên mật khẩu qua email**.
    - Bật **Google** (khuyên dùng, để người dùng khỏi lo quên mật khẩu) → chọn email hỗ trợ dự án → Save.
@@ -78,20 +78,26 @@ Khi cần sửa web sau này: sửa file rồi upload lại lên repo, đợi 1�
    - **Ghi nhớ đăng nhập:** ô "Ghi nhớ đăng nhập trên máy này" mặc định bật; lần sau mở lại web bằng cùng trình duyệt trên cùng máy sẽ tự vào, không phải đăng nhập lại. Bỏ tích ô này trên máy dùng chung: đóng tab là phải đăng nhập lại. Bấm **Đăng xuất** (avatar → Tài khoản) để xoá phiên đăng nhập.
 2. Sau khi đăng nhập bạn thấy **danh sách phòng riêng của bạn** (chỉ bạn thấy). Phòng bạn tạo hoặc đã tham gia luôn nằm ở đây, nên **không bao giờ "mất" phòng** dù quên link. Phòng mở gần đây nhất nằm trên cùng.
 3. **Tạo phòng mới** → đặt tên phòng → bạn là **chủ phòng**. Link mời lấy ở tên phòng (góc trên trái) hoặc ở Cài đặt → Mời bạn; có thể copy lại bất cứ lúc nào.
-4. Bạn bè mở link (dạng `.../#r=mã-phòng`) → đăng nhập hoặc tạo tài khoản → tự vào phòng. Cũng có thể dán link hoặc mã phòng vào ô "Dán link mời hoặc mã phòng" ở màn hình danh sách phòng.
-5. **Quyền chủ phòng:** xoá (mời ra) bất kỳ thành viên nào, đổi tên phòng, **khoá phòng** (không cho người mới vào), chuyển quyền chủ cho thành viên khác, xoá phòng. **Thành viên** có nút **Rời phòng** (Cài đặt → Quản lý phòng); phòng biến mất khỏi danh sách của họ.
-6. **Tài khoản của tôi** (bấm vào avatar): đổi biểu tượng, màu, **cách đăng nhập**:
+4. Bạn bè mở link (dạng `.../#r=mã-phòng-mã-mời`) → đăng nhập hoặc tạo tài khoản → tự vào phòng. Cũng có thể dán link vào ô "Dán link mời của phòng" ở màn hình danh sách phòng. Link chứa một **mã mời bí mật**: chỉ ai có đúng link hiện hành mới vào được.
+5. **Phân quyền trong phòng:**
+   - **Chủ phòng**: toàn quyền. Xoá bất kỳ thành viên, đổi tên phòng, **đổi link mời**, **khoá phòng**, bổ nhiệm/bãi nhiệm **phó phòng**, chuyển quyền chủ, xoá phòng.
+   - **Phó phòng** (do chủ phòng chọn ở Cài đặt → Thành viên → nút "Phó phòng"): có các đặc quyền như chủ phòng (đổi tên phòng, đổi link, khoá phòng, xoá thành viên) **trừ** việc xoá chủ phòng hay phó phòng khác, và trừ xoá phòng, chuyển quyền chủ, bổ nhiệm phó phòng.
+   - **Thành viên**: có nút **Rời phòng**. Mặc định mọi thành viên đều **đổi được tên phòng và tên nhóm chat** (mọi người thấy tên mới ngay). Chủ/phó phòng có thể tick "Chỉ chủ phòng và phó phòng được đổi tên phòng và nhóm chat" ở Cài đặt để hạn chế (người lập nhóm chat vẫn đổi được tên nhóm của mình).
+   - **Đổi link mời** (chủ/phó phòng): link cũ bị vô hiệu ngay, ai dùng link cũ sẽ báo "link đã bị vô hiệu hoá"; thành viên hiện tại không bị ảnh hưởng. Người đã bị xoá khỏi phòng cũng không vào lại được bằng link cũ.
+6. **Phòng mặc định:** bấm ngôi sao cạnh một phòng ở danh sách phòng (hoặc tick "Đặt làm phòng mặc định" trong Cài đặt của phòng) thì mỗi lần đăng nhập hoặc mở lại web sẽ **vào thẳng phòng đó**. Không đặt thì luôn hiện màn hình chọn phòng. Nút "Danh sách phòng của tôi" vẫn đưa bạn về màn hình chọn phòng bất cứ lúc nào. Link mời mới bấm vào vẫn được ưu tiên hơn phòng mặc định.
+7. **Biệt danh trong phòng:** Cài đặt → "Biệt danh trong phòng này". Tên đăng nhập không đổi; biệt danh thay tên bạn trong mọi đoạn chat của phòng đó (người khác vẫn đặt được biệt danh riêng cho bạn trong từng nhóm chat, và biệt danh đó được ưu tiên).
+8. **Tài khoản của tôi** (bấm vào avatar): đổi biểu tượng, màu và **cách đăng nhập**:
    - Người đã có tài khoản tên + mật khẩu bấm **Liên kết Google** để sau này đăng nhập bằng Google cũng vào **đúng tài khoản cũ** (giữ nguyên phòng, lịch, tin nhắn). Muốn bỏ thì **Huỷ liên kết** (cần còn một cách đăng nhập khác).
    - Người vào bằng Google bấm **Đặt mật khẩu** để cũng đăng nhập được bằng tên + mật khẩu.
    - Một email Google chỉ gắn được với một tài khoản. Nếu bạn đã đăng nhập Google và tạo một tài khoản riêng trước đó, hai tài khoản này là hai người khác nhau trên web (không tự gộp).
 
 ### Xem thử bằng dữ liệu mẫu
 
-Mở `tools/seed-demo.html` (qua link web hoặc server local, cùng nơi chạy web đã nối Firebase), nhập **một mật khẩu bạn tự chọn**, bấm tạo. Trang sẽ tạo tài khoản `Demo`, `AI Test 1`, `AI Test 2`, `AI Test 3`, phòng **Ổ Rắn Độc A1** (mã `orandoca1`, chủ phòng là `Demo`), lịch rảnh/bận của **tuần hiện tại** và vài tin nhắn + một kèo hẹn. Bạn đăng nhập `Demo` với mật khẩu vừa chọn, rồi gửi link `.../#r=orandoca1` cho người muốn xem ví dụ (họ tự tạo tài khoản của họ). Lịch mẫu theo đúng tuần lúc chạy, nên sang tuần khác hãy chạy lại trang để làm mới. Mật khẩu demo **không** nằm trong code/repo.
+Mở `tools/seed-demo.html` (qua link web hoặc server local, cùng nơi chạy web đã nối Firebase), nhập **một mật khẩu bạn tự chọn**, bấm tạo. Trang sẽ tạo tài khoản `Demo`, `AI Test 1`, `AI Test 2`, `AI Test 3`, phòng **Phòng thử nghiệm** (chủ phòng là `Demo`, phó phòng là `AI Test 1`), lịch rảnh/bận của **tuần hiện tại**, vài tin nhắn, biệt danh và một kèo hẹn. Khi xong, trang hiện **link mời** của phòng (dạng `.../#r=phongthunghiem-<mã mời>`): bạn đăng nhập `Demo` với mật khẩu vừa chọn, rồi gửi link đó cho người muốn xem ví dụ (họ tự tạo tài khoản của họ). Chạy lại trang thì giữ nguyên mã mời cũ; nếu chủ/phó phòng đã đổi link thì lấy link mới ở Cài đặt. Lịch mẫu theo đúng tuần lúc chạy, nên sang tuần khác hãy chạy lại để làm mới. Mật khẩu demo **không** nằm trong code/repo.
 
 ### Các màn hình
 
-- **Lịch của tôi**: bấm ngày ở đầu trang để **nhảy nhanh tới ngày bất kỳ** (chọn tháng/năm, ví dụ tháng 1 năm sau); kéo trên lịch để tô **Rảnh / Bận / Có thể** (chọn màu cọ ở trên). Chạm một lần để sửa chi tiết, đặt tên, hoặc cho lặp lại. Trên điện thoại: **giữ ngón tay một chút rồi kéo** (vuốt nhanh thì chỉ cuộn trang). Phần **Thói quen lặp lại** có mẫu sẵn (ngủ, đi học, đi làm, ăn trưa, tối rảnh...). Việc cụ thể từng ngày luôn đè lên thói quen.
+- **Lịch của tôi**: bấm ngày ở đầu trang để **nhảy nhanh tới ngày bất kỳ** (chọn tháng/năm, ví dụ tháng 1 năm sau); kéo trên lịch để tô **Rảnh / Bận / Có thể** (kéo **sang ngang để tô nhiều ngày một lượt**: chế độ "Cùng giờ" tô cùng một khung giờ cho từng ngày, vd. 8h–11h từ T2 đến T6; chế độ "Liền mạch" tô liên tục từ giờ bắt đầu đến giờ kết thúc ở ngày sau, hợp với giờ ngủ qua đêm) (chọn màu cọ ở trên). Chạm một lần để sửa chi tiết, đặt tên, hoặc cho lặp lại. Trên điện thoại: **giữ ngón tay một chút rồi kéo** (vuốt nhanh thì chỉ cuộn trang). Phần **Thói quen lặp lại** có mẫu sẵn (ngủ, đi học, đi làm, ăn trưa, tối rảnh...). Việc cụ thể từng ngày luôn đè lên thói quen.
 - **Nhóm**: xem lịch mọi người (cả **0–24h**, có chip "Đêm khuya" để thu gọn/mở rộng, nút nhảy ngày, lọc người bằng danh sách có tìm kiếm) theo **Ngày** (mỗi người một hàng) hoặc **Tuần** (ô càng xanh càng nhiều người đi được). Nút **Lọc**: chọn người, khung giờ (sáng/chiều/tối), các thứ trong tuần, cách tính (chỉ Rảnh / Rảnh+Có thể / Không bận), thời lượng tối thiểu, số người cần có mặt. Phần **Giờ chung gợi ý** tự liệt kê các khung giờ hợp; bấm **Rủ** để lập kèo.
 - **Chat**: phòng chung và các nhóm nhỏ. Gõ `@` để tag một người hoặc `@all` (chữ tag hiện màu xanh); người bị tag nhận chuông, chấm đỏ và popup. Trong **Thông tin nhóm** (biểu tượng bút ở đầu khung chat) có thể đặt **biệt danh** cho từng người như Messenger (chỉ áp dụng trong cuộc trò chuyện đó). **Kèo hẹn** có ngày giờ, địa điểm, nút Tham gia / Chưa chắc / Không đi, và nút đánh dấu Bận vào lịch của mình.
 - **Cài đặt**: hồ sơ, sáng/tối, **nền động** (cực quang, sao đêm, cánh hoa, sóng biển, êm dịu) hoặc **ảnh của bạn**, mời bạn, quản lý phòng.
@@ -111,7 +117,7 @@ Câu lệnh mặc định lấy ngày hôm nay từ đồng hồ máy bạn đ�
 
 - **Thông báo chỉ hoạt động khi web đang mở** (kể cả tab nền, màn hình khoá thì tuỳ điện thoại). Push thật khi đã đóng hẳn web cần một máy chủ nhỏ gửi push; có cách miễn phí (Cloudflare Workers + Web Push) nhưng phức tạp hơn nhiều.
 - **Quên mật khẩu là không khôi phục được qua email** (vì dùng email giả). Cách xử lý: tạo tài khoản mới với tên khác, hoặc bạn (chủ dự án) xoá tài khoản đó trong Firebase Console → Authentication rồi người đó đăng ký lại cùng tên.
-- **Bảo mật vẫn ở mức "nhóm bạn thân"**: phòng không hiện công khai, nhưng ai biết mã phòng thì vào được. Nhóm chat nhỏ bị hạn chế đọc bởi luật, song đừng ghi thông tin nhạy cảm (mật khẩu, số thẻ...) vào chat hay tên sự kiện. Người bị chủ phòng mời ra vẫn có thể vào lại bằng link, trừ khi phòng đã **khoá**.
+- **Bảo mật vẫn ở mức "nhóm bạn thân"**: phòng không hiện công khai, nhưng ai có link mời hiện hành thì vào được (chủ/phó phòng đổi link để thu hồi link cũ; phòng tạo từ bản trước chưa có mã mời cho tới khi bạn bấm "Đổi link mời" lần đầu). Nhóm chat nhỏ bị hạn chế đọc bởi luật, song đừng ghi thông tin nhạy cảm (mật khẩu, số thẻ...) vào chat hay tên sự kiện. Người bị mời ra vẫn có thể vào lại nếu còn giữ link hiện hành, trừ khi phòng đã **khoá** hoặc đã **đổi link mời**. Việc hạn chế đổi tên **nhóm chat** (không phải tên phòng) chỉ được áp dụng ở giao diện; tên phòng thì được luật Firebase chặn thật.
 - Hạn mức Spark: 1 GB lưu trữ, 10 GB tải/tháng, 100 kết nối cùng lúc. Một nhóm vài chục người dùng thoải mái.
 - Dữ liệu nền/ảnh nền chỉ lưu trên máy mỗi người, không đồng bộ.
 - **Đăng nhập Google trên điện thoại:** web dùng cửa sổ popup; nếu trình duyệt chặn thì tự chuyển sang kiểu chuyển trang, nhưng kiểu này đôi khi hỏng trên Safari/iPhone do trình duyệt chặn lưu trữ bên thứ ba. Gặp vậy hãy cho phép popup, hoặc dùng tên + mật khẩu.

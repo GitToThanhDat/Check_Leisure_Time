@@ -17,7 +17,7 @@
 <div class="wrap">
   <div class="card glass">
     <h2>Tạo dữ liệu mẫu</h2>
-    <p class="muted">Trang này tạo sẵn phòng <b>Ổ Rắn Độc A1</b> (chủ phòng là tài khoản <b>Demo</b>) cùng 3 thành viên <b>AI Test 1</b>, <b>AI Test 2</b>, <b>AI Test 3</b>, có lịch rảnh/bận của <b>tuần này</b>, vài tin nhắn có @tag, biệt danh và một kèo hẹn, để mọi người xem thử cách chọn giờ.</p>
+    <p class="muted">Trang này tạo sẵn phòng <b>Phòng thử nghiệm</b> (chủ phòng là tài khoản <b>Demo</b>, phó phòng là <b>AI Test 1</b>) cùng 3 thành viên <b>AI Test 1</b>, <b>AI Test 2</b>, <b>AI Test 3</b>, có lịch rảnh/bận của <b>tuần này</b>, vài tin nhắn có @tag, biệt danh và một kèo hẹn, để mọi người xem thử cách chọn giờ.</p>
     <p class="muted sm">Cần cấu hình Firebase thật trong <code>js/config.js</code> (nếu để trống, trang chạy ở chế độ thử trên trình duyệt này). Chạy lại nhiều lần được: dữ liệu mẫu sẽ được ghi đè và dời về tuần hiện tại.</p>
     <label class="fld"><span>Mật khẩu cho 4 tài khoản mẫu (từ 6 ký tự, bạn tự đặt, không lưu vào mã nguồn)</span>
       <input id="pw" class="inp" type="password" autocomplete="new-password" placeholder="Mật khẩu"></label>
@@ -36,7 +36,7 @@
 <script>
 (function () {
   'use strict';
-  var ROOM = 'orandoca1', ROOM_NAME = 'Ổ Rắn Độc A1';
+  var ROOM = 'phongthunghiem', ROOM_NAME = 'Phòng thử nghiệm', INV = '';
   var USERS = [
     { name: 'Demo', emoji: '🐍', color: '#8b7cff' },
     { name: 'AI Test 1', emoji: '🦊', color: '#ffa45c', nick: 'Rắn Hổ Mang' },
@@ -100,7 +100,9 @@
     var meta = await store.get('rooms/' + ROOM + '/meta');
     if (meta && meta.owner !== demo) throw new Error('Mã phòng "' + ROOM + '" đã có người khác dùng.');
     if (!meta) await store.set('rooms/' + ROOM + '/meta', { name: ROOM_NAME, createdAt: now, owner: demo });
+    INV = await store.get('rooms/' + ROOM + '/secret/invite').catch(function () { return null; });   // giữ nguyên mã mời nếu chạy lại
     var up = {}; up['rooms/' + ROOM + '/members/' + demo] = member(USERS[0], now); up['users/' + demo + '/rooms/' + ROOM] = { name: ROOM_NAME, ts: now };
+    if (!INV) { INV = Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, 'x'); while (INV.length < 10) INV += 'k'; up['rooms/' + ROOM + '/secret/invite'] = INV; }
     if (!meta) up['rooms/' + ROOM + '/channels/general'] = { title: 'Cả phòng', kind: 'room', ts: now, by: demo };
     await store.update(up);
     await store.set('rooms/' + ROOM + '/sched/' + demo, SC[0]); log('✓ Tạo phòng "' + ROOM_NAME + '" và lịch của Demo', 'ok');
@@ -111,7 +113,7 @@
     ];
     for (var i = 1; i <= 3; i++) {
       var uid = await asUser(USERS[i], pw); uids[i] = uid;
-      var u2 = {}; u2['rooms/' + ROOM + '/members/' + uid] = member(USERS[i], now + i); u2['users/' + uid + '/rooms/' + ROOM] = { name: ROOM_NAME, ts: now + i };
+      var u2 = {}, mb = member(USERS[i], now + i); mb.inv = INV; u2['rooms/' + ROOM + '/members/' + uid] = mb; u2['users/' + uid + '/rooms/' + ROOM] = { name: ROOM_NAME, ts: now + i };
       await store.update(u2);
       await store.set('rooms/' + ROOM + '/sched/' + uid, SC[i]);
       log('✓ ' + USERS[i].name + ' vào phòng và đánh dấu lịch', 'ok');
@@ -137,7 +139,10 @@
     for (i = 1; i <= 3; i++) p['rooms/' + ROOM + '/notifs/' + uids[i] + '/seed_inv'] = { by: demo, ts: now + 4000, t: 'invite', ch: 'plan_seed', txt: plan.plan.date + ' 19:00–21:00 · Cà phê Rắn Độc, Quận 1' };
     await store.update(p); log('✓ Biệt danh và kèo hẹn tối thứ 6 (' + fri + ')', 'ok');
     await store.auth.signOut();
-    return location.href.replace(/tools\/seed-demo\.html.*$/, '') + '#r=' + ROOM;
+    await asUser(USERS[0], pw); await store.set('rooms/' + ROOM + '/meta/deputies/' + uids[1], true); log('✓ AI Test 1 là phó phòng', 'ok');   // phó phòng để xem ví dụ phân quyền
+    for (i = 1; i <= 3; i++) { await asUser(USERS[i], pw); await store.set('rooms/' + ROOM + '/members/' + uids[i] + '/inv', null).catch(function () { }); }
+    await store.auth.signOut();
+    return location.href.replace(/tools\/seed-demo\.html.*$/, '') + '#r=' + ROOM + '-' + INV;
   }
   async function wipe(pw) {
     await asUser(USERS[0], pw);

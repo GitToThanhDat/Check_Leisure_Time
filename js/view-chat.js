@@ -206,16 +206,17 @@
     });
   };
   C.info = function () {
-    var c = cur(); if (!c) return; var isRoom = c.kind === 'room', mine = c.by === A.me.id || A.isOwner();
-    var title = h('input.inp', { value: c.title, maxLength: 40, disabled: isRoom || !mine });
+    var c = cur(); if (!c) return; var isRoom = c.kind === 'room', mine = c.by === A.me.id || A.isMod();
+    var canTitle = !isRoom && (A.canRename() || mine);   // đổi tên nhóm: mọi thành viên, hoặc chỉ chủ/phó/người lập nhóm khi bật chế độ hạn chế
+    var title = h('input.inp', { value: c.title, maxLength: 40, disabled: !canTitle });
     var sel = {}; chMembers(c).forEach(function (m) { sel[m.id] = 1; });
     var lock = {}; lock[A.me.id] = 1; if (isRoom || !mine) A.memberList().forEach(function (m) { lock[m.id] = 1; });
     var picker = U.memberPicker({ list: A.memberList(), sel: sel, lock: lock });
     var nq = '', nickList = h('div.scroll-box.mlist');
     function drawNicks() {
       U.clear(nickList); var cc = cur() || c;
-      chMembers(cc).filter(function (m) { return !nq || U.norm(m.name + ' ' + A.nick(m.id, c.id)).indexOf(nq) >= 0; }).forEach(function (m) {
-        var nk = A.nick(m.id, c.id);
+      chMembers(cc).filter(function (m) { return !nq || U.norm(m.name + ' ' + A.dn(m.id, c.id)).indexOf(nq) >= 0; }).forEach(function (m) {
+        var nk = A.dn(m.id, c.id); if (nk === m.name) nk = '';
         nickList.appendChild(h('button.mrow.nick-row', { onclick: function () { C.setNick(c.id, m).then(drawNicks); } }, U.avatar(m, 30),
           h('div.mi-n', h('b', nk || m.name), nk ? h('span.muted.sm', ' · ' + m.name) : null, m.id === A.me.id ? h('span.muted.sm', ' (bạn)') : null), U.icon('edit', 16)));
       });
@@ -226,12 +227,14 @@
     if (!isRoom && mine) actions.push(h('button.btn.danger', { onclick: function () { U.confirm('Xoá nhóm này?', 'Toàn bộ tin nhắn trong "' + c.title + '" sẽ bị xoá.', 'Xoá', true).then(function (ok) { if (!ok) return; var o = {}; o[A.path('channels/' + c.id)] = null; o[A.path('chats/' + c.id)] = null; stopMsgs(); C.cid = null; A.chatSel = null; A.store.update(o); m.close(); C.root.classList.remove('has-sel'); drawThreadEmpty(); }); } }, U.icon('trash', 16), 'Xoá nhóm'));
     if (!isRoom && !mine) actions.push(h('button.btn.danger', { onclick: function () { A.store.set(A.path('channels/' + c.id + '/members/' + A.me.id), null); m.close(); } }, 'Rời nhóm'));
     actions.push(h('button.btn.ghost', { onclick: function () { m.close(); } }, isRoom ? 'Đóng' : 'Huỷ'));
-    if (!isRoom && mine) actions.push(h('button.btn.primary', { onclick: save }, 'Lưu'));
+    if (canTitle) actions.push(h('button.btn.primary', { onclick: save }, 'Lưu'));
     var m = U.modal({ title: 'Thông tin nhóm', wide: false, body: h('div.form', h('label.fld', h('span', 'Tên nhóm'), title), nickBox, isRoom ? null : h('div.fld', h('span', 'Thành viên'), picker.el)), actions: actions });
     function save() {
       var up = {}, old = c.members || {}, added = [];
-      Object.keys(sel).forEach(function (id) { if (!old[id]) added.push(id); up[A.path('channels/' + c.id + '/members/' + id)] = true; });
-      Object.keys(old).forEach(function (id) { if (!sel[id]) up[A.path('channels/' + c.id + '/members/' + id)] = null; });
+      if (mine) {   // chỉ người lập nhóm / chủ / phó phòng mới sửa danh sách thành viên
+        Object.keys(sel).forEach(function (id) { if (!old[id]) added.push(id); up[A.path('channels/' + c.id + '/members/' + id)] = true; });
+        Object.keys(old).forEach(function (id) { if (!sel[id]) up[A.path('channels/' + c.id + '/members/' + id)] = null; });
+      }
       if (title.value.trim() && title.value.trim() !== c.title) up[A.path('channels/' + c.id + '/title')] = title.value.trim();
       Object.assign(up, A.notifyUpdates(added, { t: 'invite', ch: c.id, txt: 'Bạn được thêm vào nhóm' }));
       A.store.update(up); m.close();

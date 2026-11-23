@@ -82,8 +82,11 @@
       h('div.seg.sm', [3, 7].map(function (n) {
         return h('button' + (s === n ? '.on' : ''), { onclick: function () { Me.span = n; U.lsSet('rc_span', n); Me.anchor = null; Me.drawHead(); Me.drawGrid(); } }, n + ' ngày');
       }))));
-    el.appendChild(h('div.brushes', h('span.muted.sm', 'Kéo để tô:'), brushes));
-    el.appendChild(h('p.hint', 'Kéo trên lịch để tô bằng màu đã chọn. Chạm một lần để sửa chi tiết hoặc đặt tên. Trên điện thoại: giữ ngón tay một chút rồi kéo.'));
+    var modes = h('div.seg.sm.dragmode', { title: 'Khi kéo sang ngày khác' }, [['same', 'Cùng giờ'], ['seq', 'Liền mạch']].map(function (m) {
+      return h('button' + (Me.dragMode === m[0] ? '.on' : ''), { title: m[0] === 'same' ? 'Kéo ngang qua nhiều ngày: mỗi ngày tô cùng một khung giờ (vd. 8h–11h từ T2 đến T6)' : 'Kéo từ giờ này hôm nay đến giờ khác ngày hôm sau (vd. ngủ 23h đến 7h sáng)', onclick: function () { Me.dragMode = m[0]; U.lsSet('rc_dragmode', m[0]); Me.drawHead(); } }, m[1]);
+    }));
+    el.appendChild(h('div.brushes', h('span.muted.sm', 'Kéo để tô:'), brushes, h('span.spacer'), modes));
+    el.appendChild(h('p.hint', 'Kéo trên lịch để tô bằng màu đã chọn, kéo ngang để tô sang các ngày khác: "Cùng giờ" tô cùng khung giờ cho từng ngày, "Liền mạch" tô liên tục từ lúc bắt đầu đến lúc kết thúc (hợp với giờ ngủ qua đêm). Chạm một lần để sửa chi tiết hoặc đặt tên. Trên điện thoại: giữ ngón tay một chút rồi kéo.'));
   };
 
   Me.drawGrid = function () {
@@ -112,16 +115,35 @@
     bodyEl.addEventListener('contextmenu', function (e) { if (Me.drag) e.preventDefault(); });
   };
 
-  /* ---------- Kéo để tô (tính ô theo toạ độ, cập nhật theo khung hình, tự cuộn khi kéo sát mép) ---------- */
+  /* ---------- Kéo để tô (tính ô theo toạ độ, cập nhật theo khung hình, tự cuộn khi kéo sát mép) ----------
+   * Kéo được sang các ngày khác:
+   *   'same' (Cùng giờ): khối chữ nhật, mỗi ngày trong khoảng kéo được tô cùng một khung giờ (vd. 8h–11h cả T2→T6).
+   *   'seq'  (Liền mạch): từ giờ bắt đầu ở ngày đầu đến giờ kết thúc ở ngày cuối, các ngày giữa tô cả ngày (vd. ngủ 23h → 7h sáng hôm sau). */
+  Me.dragMode = U.lsGet('rc_dragmode', 'same');
+  /** Khoảng ô [lo,hi] cần tô trong từng cột (null = không tô) theo trạng thái kéo d */
+  function rangesOf(d) {
+    var n = d.cols.length, out = new Array(n), c0 = d.c0, c1 = d.c1, i0 = d.i0, i1 = d.i1, ci;
+    for (ci = 0; ci < n; ci++) out[ci] = null;
+    if (Me.dragMode === 'seq') {
+      var sc = c0, si = i0, ec = c1, ei = i1;
+      if (sc > ec || (sc === ec && si > ei)) { sc = c1; si = i1; ec = c0; ei = i0; }
+      for (ci = sc; ci <= ec; ci++) out[ci] = [ci === sc ? si : 0, ci === ec ? ei : 47];
+    } else {
+      var lo = Math.min(i0, i1), hi = Math.max(i0, i1);
+      for (ci = Math.min(c0, c1); ci <= Math.max(c0, c1); ci++) out[ci] = [lo, hi];
+    }
+    return out;
+  }
   function onDown(e) {
     if (e.button > 0) return; var cell = e.target.closest('.cell'); if (!cell) return;
-    var col = cell.parentNode, touch = e.pointerType === 'touch';
-    var d = Me.drag = { col: col, cells: U.$$('.cell', col), sc: col.closest('.wk-scroll'), date: col.dataset.d, i0: +cell.dataset.i, i1: +cell.dataset.i, pa: -1, pb: -1, moved: false, started: false, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, touch: touch, raf: 0 };
+    var col = cell.parentNode, touch = e.pointerType === 'touch', body = col.parentNode;
+    var cols = U.$$('.col', body), ci = cols.indexOf(col);
+    var d = Me.drag = { cols: cols, cells: cols.map(function (c) { return U.$$('.cell', c); }), body: body, sc: col.closest('.wk-scroll'), c0: ci, c1: ci, i0: +cell.dataset.i, i1: +cell.dataset.i, pv: null, moved: false, started: false, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, touch: touch, raf: 0 };
     if (touch) d.timer = setTimeout(function () { start(d); if (navigator.vibrate) navigator.vibrate(12); }, 230);
     else { start(d); e.preventDefault(); }
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onCancel);
   }
-  function start(d) { if (d.started) return; d.started = true; d.holdOn = true; if (root.Bg) Bg.hold(1); d.col.dataset.brush = A.pf.brush; preview(); }
+  function start(d) { if (d.started) return; d.started = true; d.holdOn = true; if (root.Bg) Bg.hold(1); d.cols.forEach(function (c) { c.dataset.brush = A.pf.brush; }); preview(); }
   function onMove(e) {
     var d = Me.drag; if (!d) return;
     if (!d.started) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 9) onCancel(); return; }
@@ -129,32 +151,40 @@
   }
   function step() {
     var d = Me.drag; if (!d) return; d.raf = 0;
-    var r = d.col.getBoundingClientRect(), i = Math.max(0, Math.min(47, Math.floor((d.ly - r.top) / ROW)));
-    if (i !== d.i1) { d.i1 = i; d.moved = true; preview(); }
+    // cột đang trỏ tới: cột chứa x, hoặc cột gần nhất ở hai đầu
+    var rects = d.cols.map(function (c) { return c.getBoundingClientRect(); }), ci = d.c1, k;
+    if (d.lx < rects[0].left) ci = 0; else if (d.lx >= rects[rects.length - 1].right) ci = rects.length - 1;
+    else for (k = 0; k < rects.length; k++) if (d.lx >= rects[k].left && d.lx < rects[k].right) { ci = k; break; }
+    var r = rects[ci], i = Math.max(0, Math.min(47, Math.floor((d.ly - r.top) / ROW)));
+    if (i !== d.i1 || ci !== d.c1) { d.i1 = i; d.c1 = ci; d.moved = true; preview(); }
     if (d.sc) {   // kéo sát mép trên/dưới thì tự cuộn
       var sr = d.sc.getBoundingClientRect(), dy = d.ly < sr.top + 56 ? -12 : d.ly > sr.bottom - 36 ? 12 : 0;
       if (dy) { d.sc.scrollTop += dy; d.raf = requestAnimationFrame(step); }
     }
   }
   function preview() {
-    var d = Me.drag; if (!d) return; var a = Math.min(d.i0, d.i1), b = Math.max(d.i0, d.i1);
-    var lo = d.pa < 0 ? a : Math.min(a, d.pa), hi = d.pa < 0 ? b : Math.max(b, d.pb);
-    for (var i = lo; i <= hi; i++) d.cells[i].classList.toggle('pv', i >= a && i <= b);
-    d.pa = a; d.pb = b;
+    var d = Me.drag; if (!d) return; var nw = rangesOf(d), old = d.pv || [];
+    nw.forEach(function (rg, ci) {
+      var op = old[ci], cells = d.cells[ci]; if (!rg && !op) return;
+      var lo = Math.min(rg ? rg[0] : 99, op ? op[0] : 99), hi = Math.max(rg ? rg[1] : -1, op ? op[1] : -1);
+      for (var i = lo; i <= hi; i++) cells[i].classList.toggle('pv', !!rg && i >= rg[0] && i <= rg[1]);
+    });
+    d.pv = nw;
   }
   function end() {
     var d = Me.drag; if (d && d.timer) clearTimeout(d.timer); if (d && d.raf) cancelAnimationFrame(d.raf);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onCancel);
-    if (d) { d.cells.forEach(function (c) { c.classList.remove('pv'); }); if (d.holdOn && root.Bg) Bg.hold(-1); }
+    if (d) { d.cells.forEach(function (cs) { cs.forEach(function (c) { c.classList.remove('pv'); }); }); d.cols.forEach(function (c) { delete c.dataset.brush; }); if (d.holdOn && root.Bg) Bg.hold(-1); }
     Me.drag = null; return d;
   }
   function onCancel() { end(); }
   function onUp() {
     var d = end(); if (!d) return;
     if (d.started && d.moved) {
-      var a = Math.min(d.i0, d.i1), b = Math.max(d.i0, d.i1);
-      Me.paint(d.date, a * SLOT, (b + 1) * SLOT, A.pf.brush);
-    } else if (d.started || d.touch) Me.clickCell(d.date, d.i0);
+      var rg = rangesOf(d), ops = [];
+      rg.forEach(function (r, ci) { if (r) ops.push({ date: d.cols[ci].dataset.d, s: r[0] * SLOT, e: (r[1] + 1) * SLOT, st: A.pf.brush, lb: '' }); });
+      applyOps(ops);
+    } else if (d.started || d.touch) Me.clickCell(d.cols[d.c0].dataset.d, d.i0);
   }
 
   Me.clickCell = function (date, i) {

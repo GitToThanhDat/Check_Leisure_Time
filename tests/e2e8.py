@@ -36,7 +36,7 @@ with sync_playwright() as p:
     pg.click('button >> text=Tạo phòng mới'); pg.fill('.modal input','Ổ Rắn Test'); pg.click('.modal .btn.primary'); pg.wait_for_selector('.shell')
     assert pg.inner_text('.rname')=='Ổ Rắn Test'
     pg.screenshot(path='/tmp/shots/a2_room.png')
-    rid=pg.evaluate('A.room.id'); print('room',rid)
+    rid=pg.evaluate('A.room.id'); link=pg.evaluate('A.inviteLink()'); code=link.split('#r=')[1]; print('room',rid,code); assert '-' in code
     # về danh sách: phòng hiện ở "Phòng tôi tạo" và có nút copy link
     pg.click('.topbar .icon-btn >> nth=0'); pg.wait_for_selector('.room-row')
     assert 'Phòng tôi tạo' in pg.inner_text('.home') and 'Bạn là chủ phòng' in pg.inner_text('.home')
@@ -46,7 +46,7 @@ with sync_playwright() as p:
     logout(pg)
     # thành viên 1 vào bằng link
     signup(pg,'Bạn A','123456')
-    pg.fill('input[placeholder^="Dán link"]','http://localhost:8765/index.html#r='+rid); pg.click('.home .btn.primary >> text=Vào'); pg.wait_for_selector('text=Tham gia phòng'); pg.screenshot(path='/tmp/shots/a4_join.png')
+    pg.fill('input[placeholder^="Dán link"]',link); pg.click('.home .btn.primary >> text=Vào'); pg.wait_for_selector('text=Tham gia phòng'); pg.screenshot(path='/tmp/shots/a4_join.png')
     pg.click('button >> text=Tham gia phòng'); pg.wait_for_selector('.shell')
     assert pg.evaluate('Object.keys(A.members).length')==2
     # thành viên không có đặc quyền chủ phòng
@@ -56,7 +56,7 @@ with sync_playwright() as p:
     # bạn A rời phòng
     pg.click('button >> text=Rời phòng'); pg.click('.modal .btn.danger'); pg.wait_for_selector('.home'); assert 'Ổ Rắn Test' not in pg.inner_text('.home')
     # vào lại rồi để chủ phòng xoá
-    pg.fill('input[placeholder^="Dán link"]',rid); pg.click('.home .btn.primary >> text=Vào'); pg.click('button >> text=Tham gia phòng'); pg.wait_for_selector('.shell')
+    pg.fill('input[placeholder^="Dán link"]',code); pg.click('.home .btn.primary >> text=Vào'); pg.click('button >> text=Tham gia phòng'); pg.wait_for_selector('.shell')
     logout_room=lambda: None
     pg.click('.topbar .me-btn'); pg.click('.modal-foot .danger'); pg.click('.modal .btn.primary >> text=Đăng xuất'); pg.wait_for_selector('.auth-tabs')
     login(pg,'Chủ Nhà','matkhau1'); pg.click('.room-main'); pg.wait_for_selector('.shell')

@@ -4,8 +4,9 @@
  *   - Mỗi người có 1 tài khoản (tên không trùng; đăng nhập bằng mật khẩu và/hoặc Google) -> uid.
  *   - names/$slug              : sổ tên duy nhất {slug tên -> uid} dùng chung cho cả hai cách đăng nhập.
  *   - users/$uid               : hồ sơ {name, emoji, color}; users/$uid/rooms/$room = {name, ts}  (danh sách phòng RIÊNG của người đó)
- *   - rooms/$room/meta         : {name, owner:uid, createdAt, locked?}
- *   - rooms/$room/members/$uid : {name, emoji, color, joinedAt, showLb}
+ *   - rooms/$room/meta         : {name, owner:uid, createdAt, locked?, modRename?(true = chỉ chủ/phó đổi tên), deputies?:{uid:true}}  (chủ phòng + phó phòng)
+ *   - rooms/$room/secret/invite: mã bí mật trong link mời (#r=<phòng>-<mã>); đổi mã = link cũ vô hiệu. Chỉ thành viên đọc được.
+ *   - rooms/$room/members/$uid : {name, emoji, color, joinedAt, showLb, nick?(biệt danh trong phòng)}
  *   - rooms/$room/sched|channels|chats|notifs/... như cũ, khoá bằng uid.
  */
 (function (root) {
@@ -38,10 +39,23 @@
   };
   A.path = function (rest) { return 'rooms/' + A.room.id + (rest ? '/' + rest : ''); };
   A.isOwner = function () { return !!(A.room && A.room.meta && A.me && A.room.meta.owner === A.me.id); };
+  /** Phó phòng: meta.deputies[uid] === true */
+  A.isDeputy = function (uid) { var d = A.room && A.room.meta && A.room.meta.deputies; uid = uid || (A.me && A.me.id); return !!(d && uid && d[uid]); };
+  /** Chủ phòng hoặc phó phòng (có đặc quyền quản lý) */
+  A.isMod = function () { return A.isOwner() || A.isDeputy(); };
+  /** Mình có xoá được người m khỏi phòng không: chủ xoá được mọi người; phó chỉ xoá thành viên thường (không xoá chủ, không xoá phó khác) */
+  A.canKick = function (m) {
+    if (!A.room || m.id === A.me.id || m.id === A.room.meta.owner) return false;
+    return A.isOwner() || (A.isDeputy() && !A.isDeputy(m.id));
+  };
+  /** Đổi tên phòng / nhóm chat: mọi thành viên được phép, trừ khi chủ/phó phòng bật "chỉ chủ & phó phòng được đổi tên" (meta.modRename) */
+  A.canRename = function () { return !!(A.room && (A.isMod() || !A.room.meta.modRename)); };
+  A.roleOf = function (uid) { return A.room && A.room.meta && A.room.meta.owner === uid ? 'owner' : A.isDeputy(uid) ? 'deputy' : 'member'; };
   /** Biệt danh (kiểu Messenger) của uid trong kênh chat cid ('' nếu chưa đặt) */
   A.nick = function (uid, cid) { var c = A.channels[cid || A.chatSel]; return (c && c.nick && c.nick[uid]) || ''; };
-  /** Tên hiển thị: biệt danh trong kênh nếu có, không thì tên thật */
-  A.dn = function (uid, cid) { var n = A.nick(uid, cid); if (n) return n; var m = A.members[uid]; return m ? m.name : 'Người đã rời phòng'; };
+  A.roomNick = function (uid) { var m = A.members[uid]; return (m && m.nick) || ''; };
+  /** Tên hiển thị trong chat: biệt danh đặt trong nhóm > biệt danh trong phòng (người đó tự đặt) > tên thật */
+  A.dn = function (uid, cid) { var n = A.nick(uid, cid) || A.roomNick(uid); if (n) return n; var m = A.members[uid]; return m ? m.name : 'Người đã rời phòng'; };
   A.dirty = function (kind) {
     if (A._raf) { A._kinds[kind] = 1; return; }
     A._kinds = {}; A._kinds[kind] = 1;
@@ -79,13 +93,18 @@
       ? h('div.banner', 'Đang ở chế độ thử: dữ liệu chỉ lưu trên trình duyệt này. Nối Firebase để đồng bộ với bạn bè (xem HUONG-DAN.md).') : null;
   }
   function extractCode(s) {
-    s = String(s || '').trim(); var m = /[#?&]r=([a-z0-9]+)/i.exec(s);
-    return (m ? m[1] : s.replace(/[^a-z0-9]/gi, '')).toLowerCase();
+    s = String(s || '').trim(); var m = /[#?&]r=([a-z0-9-]+)/i.exec(s);
+    return (m ? m[1] : s.replace(/[^a-z0-9-]/gi, '')).toLowerCase();
   }
+  /** Mã trong link: "<mã phòng>" (phòng cũ) hoặc "<mã phòng>-<mã mời>" */
+  function parseCode(c) { var p = String(c || '').toLowerCase().split('-'); return { id: p[0], tok: p[1] || '' }; }
   function errMsg(e) { return Store.authMsg ? Store.authMsg(e) : (e && e.message) || 'Có lỗi xảy ra'; }
-  A.linkOf = function (id) { return location.href.split('#')[0].split('?')[0] + '#r=' + id; };
-  A.inviteLink = function () { return A.linkOf(A.room.id); };
-  function copyLink(id, label) { U.copy(A.linkOf(id)).then(function () { U.toast('Đã copy link' + (label ? ' phòng "' + label + '"' : '')); }); }
+  A.linkOf = function (id, tok) { return location.href.split('#')[0].split('?')[0] + '#r=' + id + (tok ? '-' + tok : ''); };
+  A.inviteLink = function () { return A.linkOf(A.room.id, A.room.invite); };
+  async function copyLink(id, label) {
+    var tok = null; try { tok = await A.store.get('rooms/' + id + '/secret/invite'); } catch (e) { }
+    U.copy(A.linkOf(id, tok)).then(function () { U.toast('Đã copy link' + (label ? ' phòng "' + label + '"' : '')); });
+  }
   A.copyLink = copyLink;
 
   /* ================= ĐĂNG NHẬP / TẠO TÀI KHOẢN ================= */
@@ -188,10 +207,10 @@
   /** Bảo đảm có hồ sơ users/$uid (phòng khi lần tạo tài khoản trước bị đứt giữa chừng) */
   async function ensureProfile(u) {
     var p = await A.store.get('users/' + u.uid);
-    if (p && p.name) return { id: u.uid, name: p.name, emoji: p.emoji, color: p.color };
+    if (p && p.name) return { id: u.uid, name: p.name, emoji: p.emoji, color: p.color, defaultRoom: p.defaultRoom || null };
     var nm = u.name || 'Người dùng', pr = { name: nm, emoji: U.EMOJIS[Math.floor(Math.random() * U.EMOJIS.length)], color: U.COLORS[Math.floor(Math.random() * U.COLORS.length)], createdAt: A.store.now() };
     await A.store.set('users/' + u.uid, pr);
-    return Object.assign({ id: u.uid }, pr);
+    return Object.assign({ id: u.uid, defaultRoom: null }, pr);
   }
 
   /** Lần đầu đăng nhập bằng Google: chọn tên hiển thị duy nhất + biểu tượng + màu */
@@ -242,12 +261,20 @@
       A.idxUnsub = A.store.listen('users/' + A.user.id + '/rooms', function (v) { A.idx = v || {}; A.idxReady = true; if (A.onIdx) A.onIdx(); });
       var code = A.pendingCode; A.pendingCode = null;
       if (code) { openByCode(code); return; }
+      if (A.user.defaultRoom && !opt.isNew) { enterRoom(A.user.defaultRoom); return; }   // đã đặt phòng mặc định: đăng nhập là vào thẳng phòng đó
       showHome(opt.isNew ? 'Chào mừng ' + A.user.name + '! Tạo phòng đầu tiên hoặc dán link bạn bè gửi.' : null);
     } catch (e) {
       console.error(e); A.user = null;
       showAuth({ msg: 'Đăng nhập được nhưng không đọc được dữ liệu: ' + (e.message || e) + '. Nếu bạn vừa cập nhật web, hãy kiểm tra lại Rules trong Firebase (xem HUONG-DAN.md).' });
     }
   }
+
+  /** Phòng mặc định (lưu theo tài khoản, đồng bộ mọi thiết bị): đăng nhập xong tự vào thẳng phòng này. null = luôn hiện danh sách phòng. */
+  A.setDefaultRoom = function (id) {
+    var prev = A.user.defaultRoom || null; A.user.defaultRoom = id || null;
+    return A.store.set('users/' + A.user.id + '/defaultRoom', id || null).catch(function (e) { A.user.defaultRoom = prev; U.toast('Không lưu được phòng mặc định: ' + (e.message || e), { kind: 'err' }); throw e; });
+  };
+  function clearDefault(id) { if (A.user && A.user.defaultRoom === id) { A.user.defaultRoom = null; A.store.set('users/' + A.user.id + '/defaultRoom', null).catch(function () { }); } }
 
   A.logout = async function () {
     stopRoom(); A.room = null;
@@ -325,17 +352,18 @@
   /* ================= DANH SÁCH PHÒNG CỦA TÔI (màn hình chính) ================= */
   function showHome(msg) {
     stopRoom(); A.room = null; document.title = APP_NAME;
-    var app = appRoot(), codeInp = h('input.inp', { placeholder: 'Dán link mời hoặc mã phòng', autocapitalize: 'none', spellcheck: false });
+    var app = appRoot(), codeInp = h('input.inp', { placeholder: 'Dán link mời của phòng', autocapitalize: 'none', spellcheck: false });
     var listEl = h('div.rooms'), q = '', info = {}, searchEl = null;
     function go() { var c = extractCode(codeInp.value); if (c) openByCode(c); }
     codeInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
     function sorted(ids) { return ids.sort(function (a, b) { return (A.ord[b] || 0) - (A.ord[a] || 0) || String((A.idx[a] || {}).name).localeCompare(String((A.idx[b] || {}).name)); }); }
     function row(id) {
-      var ix = A.idx[id] || {}, inf = info[id] || {}, owner = inf.meta && inf.meta.owner === A.user.id, nm = (inf.meta && inf.meta.name) || ix.name || id;
+      var def = A.user.defaultRoom === id, ix = A.idx[id] || {}, inf = info[id] || {}, owner = inf.meta && inf.meta.owner === A.user.id, nm = (inf.meta && inf.meta.name) || ix.name || id;
       return h('div.room-row',
         h('button.room-main', { onclick: function () { enterRoom(id); } },
           h('span.r-ic' + (owner ? '.own' : ''), U.icon(owner ? 'crown' : 'users', 20)),
-          h('div.r-t', h('b', nm), h('small.muted', (owner ? 'Bạn là chủ phòng · ' : '') + 'mã ' + id + (inf.meta && inf.meta.locked ? ' · đã khoá' : ''))), U.icon('right', 18)),
+          h('div.r-t', h('b', nm), h('small.muted', (owner ? 'Bạn là chủ phòng' : inf.meta && inf.meta.deputies && inf.meta.deputies[A.user.id] ? 'Bạn là phó phòng' : 'Thành viên') + (def ? ' · phòng mặc định' : '') + (inf.meta && inf.meta.locked ? ' · đã khoá' : ''))), U.icon('right', 18)),
+        h('button.icon-btn' + (def ? '.starred' : ''), { title: def ? 'Đang là phòng mặc định (bấm để bỏ)' : 'Đặt làm phòng mặc định: tự vào phòng này mỗi khi đăng nhập', onclick: function () { A.setDefaultRoom(def ? null : id).then(function () { U.toast(def ? 'Đã bỏ phòng mặc định: mỗi lần đăng nhập sẽ hiện danh sách phòng' : 'Đã đặt "' + nm + '" làm phòng mặc định'); draw(); }, function () { }); } }, U.icon('star', 20)),
         h('button.icon-btn', { title: 'Copy link mời của phòng này', onclick: function () { copyLink(id, nm); } }, U.icon('link')));
     }
     function draw() {
@@ -363,12 +391,13 @@
       });
     }
     A.onIdx = function () { draw(); verify(); };
-    searchEl = h('input.inp.sm', { placeholder: 'Tìm phòng theo tên hoặc mã…', oninput: function (e) { q = U.norm(e.target.value); draw(); } });
+    searchEl = h('input.inp.sm', { placeholder: 'Tìm phòng theo tên…', oninput: function (e) { q = U.norm(e.target.value); draw(); } });
     app.appendChild(h('div.auth.top', h('div.card.glass.auth-card.home',
       h('div.home-top', brand(), h('button.me-btn', { title: 'Tài khoản', onclick: A.accountModal }, U.avatar(A.user, 38))),
       h('p.lead', 'Xin chào ', h('b', A.user.name), '! Đây là các phòng của bạn.'),
       msg ? h('div.note', msg) : null, searchEl, listEl,
-      h('div.sect', h('h4', 'Vào phòng bằng link / mã'), h('div.row', codeInp, h('button.btn.primary', { onclick: go }, 'Vào'))),
+      h('p.hint', 'Bấm ngôi sao cạnh một phòng để đặt làm phòng mặc định: lần sau đăng nhập sẽ vào thẳng phòng đó. Không đặt thì bạn luôn thấy màn hình chọn phòng này.'),
+      h('div.sect', h('h4', 'Vào phòng bằng link mời'), h('div.row', codeInp, h('button.btn.primary', { onclick: go }, 'Vào'))),
       h('div.sect.center', h('button.btn.primary', { onclick: createRoom }, U.icon('plus', 16), 'Tạo phòng mới')),
       modeBanner())));
     draw(); verify();
@@ -385,6 +414,7 @@
         var up = {};
         up['rooms/' + id + '/members/' + uid] = { name: A.user.name, emoji: A.user.emoji, color: A.user.color, joinedAt: now, showLb: true };
         up['rooms/' + id + '/channels/general'] = { title: 'Cả phòng', kind: 'room', ts: now, by: uid };
+        up['rooms/' + id + '/secret/invite'] = U.rid(10);                                          // mã bí mật của link mời (đổi được sau này)
         up['users/' + uid + '/rooms/' + id] = { name: name, ts: now };
         await A.store.update(up);                                                                  // bước 2: thêm mình vào phòng
         enterRoom(id, { isNew: true });
@@ -394,31 +424,37 @@
 
   /* ================= VÀO PHÒNG BẰNG LINK / MÃ ================= */
   async function openByCode(code) {
+    var p = parseCode(code), id = p.id;
     try {
-      var meta = await A.store.get('rooms/' + code + '/meta');
-      if (!meta) { U.toast('Không tìm thấy phòng có mã "' + code + '"', { kind: 'err' }); if (!A.room) showHome(); return; }
-      var mem = await A.store.get('rooms/' + code + '/members/' + A.user.id).catch(function () { return null; });
-      if (mem) { enterRoom(code); return; }
-      showJoin(code, meta);
+      var meta = await A.store.get('rooms/' + id + '/meta');
+      if (!meta) { U.toast('Không tìm thấy phòng cho link này. Link có thể sai hoặc phòng đã bị xoá.', { kind: 'err' }); if (!A.room) showHome(); return; }
+      var mem = await A.store.get('rooms/' + id + '/members/' + A.user.id).catch(function () { return null; });
+      if (mem) { enterRoom(id); return; }
+      showJoin(id, meta, p.tok);
     } catch (e) { U.toast('Lỗi kết nối: ' + (e.message || e), { kind: 'err' }); if (!A.room) showHome(); }
   }
 
-  async function showJoin(id, meta) {
+  async function showJoin(id, meta, tok) {
     var app = appRoot(), owner = await A.store.get('users/' + meta.owner + '/name').catch(function () { return null; });
     var btn = h('button.btn.primary.block', { disabled: !!meta.locked, onclick: join }, U.icon('plus', 16), 'Tham gia phòng');
     async function join() {
       btn.disabled = true;
       try {
-        var now = A.store.now(), up = {};
-        up['rooms/' + id + '/members/' + A.user.id] = { name: A.user.name, emoji: A.user.emoji, color: A.user.color, joinedAt: now, showLb: true };
+        var inv; try { inv = await A.store.get('rooms/' + id + '/secret/invite'); } catch (e) { inv = undefined; }   // người ngoài không đọc được: Rules sẽ tự kiểm tra
+        if (inv && inv !== tok) { btn.disabled = false; U.toast('Link mời này đã bị vô hiệu hoá (phòng đã đổi link). Hãy xin link mới từ chủ phòng hoặc phó phòng.', { kind: 'err', ms: 6000 }); return; }
+        var now = A.store.now(), up = {}, mm = { name: A.user.name, emoji: A.user.emoji, color: A.user.color, joinedAt: now, showLb: true };
+        if (tok) mm.inv = tok;
+        up['rooms/' + id + '/members/' + A.user.id] = mm;
         up['users/' + A.user.id + '/rooms/' + id] = { name: meta.name, ts: now };
-        await A.store.update(up); enterRoom(id, { isNew: true });
-      } catch (e) { btn.disabled = false; console.error(e); U.toast('Không vào được: ' + (e.code === 'PERMISSION_DENIED' || /permission/i.test(e.message || '') ? 'phòng đã khoá hoặc bạn không có quyền.' : e.message), { kind: 'err' }); }
+        await A.store.update(up);
+        if (tok) A.store.set('rooms/' + id + '/members/' + A.user.id + '/inv', null).catch(function () { });   // mã mời chỉ cần lúc vào
+        enterRoom(id, { isNew: true });
+      } catch (e) { btn.disabled = false; console.error(e); U.toast('Không vào được: ' + (e.code === 'PERMISSION_DENIED' || /permission/i.test(e.message || '') ? 'phòng đã khoá, link mời đã bị đổi, hoặc bạn không có quyền.' : e.message), { kind: 'err', ms: 6000 }); }
     }
     app.appendChild(h('div.auth', h('div.card.glass.auth-card', brand(),
       h('h3', 'Phòng "' + meta.name + '"'),
       h('p.muted', owner ? 'Chủ phòng: ' + owner : null),
-      meta.locked ? h('div.note.warn', U.icon('lock', 16), ' Chủ phòng đã khoá phòng, hiện không nhận thêm người. Hãy nhờ chủ phòng mở lại.') : h('p', 'Bạn đang đăng nhập là ', h('b', A.user.name), '. Tham gia phòng này?'),
+      meta.locked ? h('div.note.warn', U.icon('lock', 16), ' Phòng đang khoá, hiện không nhận thêm người. Hãy nhờ chủ phòng hoặc phó phòng mở lại.') : h('p', 'Bạn đang đăng nhập là ', h('b', A.user.name), '. Tham gia phòng này?'),
       btn, h('button.btn.ghost.block', { onclick: function () { showHome(); } }, 'Về danh sách phòng'))));
   }
 
@@ -430,23 +466,24 @@
       var r = await Promise.all([A.store.get('rooms/' + id + '/meta'), A.store.get('rooms/' + id + '/members/' + A.user.id).catch(function () { return null; })]);
       var meta = r[0], me = r[1];
       if (!meta || !me) {
-        A.store.set('users/' + A.user.id + '/rooms/' + id, null).catch(function () { });
+        A.store.set('users/' + A.user.id + '/rooms/' + id, null).catch(function () { }); clearDefault(id);
         showHome(!meta ? 'Phòng này không còn tồn tại.' : 'Bạn không còn là thành viên của phòng này.'); return;
       }
-      A.room = { id: id, meta: meta }; A.ord[id] = Date.now(); U.lsSet('rc_ord_' + A.user.id, A.ord);
+      A.room = { id: id, meta: meta, invite: null }; A.ord[id] = Date.now(); U.lsSet('rc_ord_' + A.user.id, A.ord);
       if (!A.idx[id] || A.idx[id].name !== meta.name) A.store.set('users/' + A.user.id + '/rooms/' + id, { name: meta.name, ts: (A.idx[id] && A.idx[id].ts) || A.store.now() }).catch(function () { });
       A.me = Object.assign({ id: A.user.id }, me);
       A.members = {}; A.sched = {}; A.channels = {}; A.notifs = []; A.chatSel = null; A.notifReady = false; A.notifSeen = {}; A.onIdx = null;
       var pending = 4, resolveReady, ready = new Promise(function (rs) { resolveReady = rs; }), got = {};
       function once(k) { return function () { if (!got[k]) { got[k] = 1; if (--pending === 0) resolveReady(); } }; }
       var d1 = once('m'), d2 = once('s'), d3 = once('c'), d4 = once('n');
-      function kicked() { if (A.room && A.room.id === id) { stopRoom(); A.store.set('users/' + A.user.id + '/rooms/' + id, null).catch(function () { }); showHome('Bạn không còn là thành viên của phòng "' + meta.name + '".'); } }
+      function kicked() { if (A.room && A.room.id === id) { stopRoom(); A.store.set('users/' + A.user.id + '/rooms/' + id, null).catch(function () { }); clearDefault(id); showHome('Bạn không còn là thành viên của phòng "' + meta.name + '".'); } }
       A.unsubs.push(A.store.listen('rooms/' + id + '/meta', function (v) {
         if (!A.room || A.room.id !== id) return;
-        if (!v) { stopRoom(); A.store.set('users/' + A.user.id + '/rooms/' + id, null).catch(function () { }); showHome('Phòng "' + meta.name + '" đã bị chủ phòng xoá.'); return; }
+        if (!v) { stopRoom(); A.store.set('users/' + A.user.id + '/rooms/' + id, null).catch(function () { }); clearDefault(id); showHome('Phòng "' + meta.name + '" đã bị chủ phòng xoá.'); return; }
         var chg = JSON.stringify(v) !== JSON.stringify(A.room.meta); A.room.meta = v;
         if (chg) { var rn = $('.rname'); if (rn) rn.textContent = v.name; A.dirty('meta'); }
       }, { onError: kicked }));
+      A.unsubs.push(A.store.listen(A.path('secret/invite'), function (v) { if (A.room && A.room.id === id) { A.room.invite = v || null; A.dirty('meta'); } }, { onError: function () { } }));
       A.unsubs.push(A.store.listen(A.path('members'), function (v) {
         A.members = v || {};
         if (A.shellReady && !A.members[A.me.id]) { kicked(); return; }
@@ -474,17 +511,34 @@
     var o = {}; o[A.path('members/' + uid)] = null; o[A.path('sched/' + uid)] = null; o[A.path('notifs/' + uid)] = null; return o;
   }
   A.kickMember = function (m) {
-    return U.confirm('Xoá ' + m.name + ' khỏi phòng?', 'Lịch của bạn ấy trong phòng này sẽ bị xoá. Bạn ấy vẫn có thể vào lại bằng link nếu phòng chưa khoá.', 'Xoá khỏi phòng', true).then(function (ok) {
-      if (!ok) return; return A.store.update(wipeMember(m.id)).then(function () { U.toast('Đã xoá ' + m.name + ' khỏi phòng'); }, function (e) { U.toast('Không xoá được: ' + (e.message || e), { kind: 'err' }); });
+    return U.confirm('Xoá ' + m.name + ' khỏi phòng?', 'Lịch của bạn ấy trong phòng này sẽ bị xoá. Bạn ấy chỉ vào lại được bằng link mời hiện hành, và không vào được nếu phòng đã khoá hoặc bạn đã đổi link.', 'Xoá khỏi phòng', true).then(function (ok) {
+      if (!ok) return; var o = wipeMember(m.id); if (A.isOwner() && A.isDeputy(m.id)) o[A.path('meta/deputies/' + m.id)] = null;
+      return A.store.update(o).then(function () { U.toast('Đã xoá ' + m.name + ' khỏi phòng'); }, function (e) { U.toast('Không xoá được: ' + (e.message || e), { kind: 'err' }); });
     });
   };
   A.setOwner = function (m) {
-    return U.confirm('Chuyển quyền chủ phòng cho ' + m.name + '?', 'Bạn sẽ trở thành thành viên thường. Chỉ chủ phòng mới xoá được người khác hoặc xoá phòng.', 'Chuyển quyền').then(function (ok) {
-      if (!ok) return; return A.store.set(A.path('meta/owner'), m.id).then(function () { U.toast(m.name + ' là chủ phòng mới'); }, function (e) { U.toast('Không chuyển được: ' + (e.message || e), { kind: 'err' }); });
+    return U.confirm('Chuyển quyền chủ phòng cho ' + m.name + '?', 'Bạn sẽ trở thành thành viên thường. Chỉ chủ phòng mới xoá được phòng, chuyển quyền chủ và chọn phó phòng.', 'Chuyển quyền').then(function (ok) {
+      if (!ok) return; var o = {}; o[A.path('meta/owner')] = m.id; o[A.path('meta/deputies/' + m.id)] = null;
+      return A.store.update(o).then(function () { U.toast(m.name + ' là chủ phòng mới'); }, function (e) { U.toast('Không chuyển được: ' + (e.message || e), { kind: 'err' }); });
+    });
+  };
+  /** Chủ phòng bổ nhiệm / bãi nhiệm phó phòng */
+  A.setDeputy = function (m, on) {
+    return A.store.set(A.path('meta/deputies/' + m.id), on ? true : null).then(function () { U.toast(on ? m.name + ' là phó phòng' : 'Đã bỏ quyền phó phòng của ' + m.name); }, function (e) { U.toast('Không đổi được: ' + (e.message || e), { kind: 'err' }); });
+  };
+  /** Chủ/phó phòng đổi mã mời: link cũ ngừng dùng được, thành viên hiện tại không bị ảnh hưởng */
+  A.changeInvite = function () {
+    return U.confirm('Đổi link mời?', 'Link cũ sẽ ngừng dùng được ngay lập tức, chỉ link mới có tác dụng. Các thành viên hiện tại vẫn ở trong phòng. Bạn cần gửi link mới cho người muốn mời.', 'Đổi link').then(function (ok) {
+      if (!ok) return; var t = U.rid(10);
+      return A.store.set(A.path('secret/invite'), t).then(function () {
+        A.room.invite = t; A.dirty('meta'); U.copy(A.inviteLink()).then(function () { U.toast('Đã đổi link và copy link mới. Link cũ đã bị vô hiệu hoá.', { ms: 5000 }); }, function () { U.toast('Đã đổi link. Link cũ đã bị vô hiệu hoá.'); });
+      }, function (e) { U.toast('Không đổi được link: ' + (e.message || e), { kind: 'err' }); });
     });
   };
   function doLeave() {
     var rid = A.room.id, o = wipeMember(A.me.id); o['users/' + A.user.id + '/rooms/' + rid] = null;
+    if (A.user.defaultRoom === rid) { o['users/' + A.user.id + '/defaultRoom'] = null; A.user.defaultRoom = null; }
+    if (A.isDeputy()) o[A.path('meta/deputies/' + A.me.id)] = null;
     stopRoom(); A.shellReady = false;
     return A.store.update(o).then(function () { A.room = null; showHome('Bạn đã rời phòng.'); }, function (e) { U.toast('Không rời được: ' + (e.message || e), { kind: 'err' }); });
   }
@@ -507,7 +561,7 @@
   A.deleteRoom = function () {
     return U.confirm('Xoá cả phòng?', 'Toàn bộ lịch, tin nhắn và thành viên sẽ bị xoá vĩnh viễn, không khôi phục được.', 'Xoá phòng', true).then(function (ok) {
       if (!ok) return; var rid = A.room.id; stopRoom(); A.shellReady = false;
-      return A.store.set('rooms/' + rid, null).then(function () { return A.store.set('users/' + A.user.id + '/rooms/' + rid, null); }).then(function () { A.room = null; showHome('Đã xoá phòng.'); }, function (e) { U.toast('Không xoá được: ' + (e.message || e), { kind: 'err' }); });
+      return A.store.set('rooms/' + rid, null).then(function () { clearDefault(rid); return A.store.set('users/' + A.user.id + '/rooms/' + rid, null); }).then(function () { A.room = null; showHome('Đã xoá phòng.'); }, function (e) { U.toast('Không xoá được: ' + (e.message || e), { kind: 'err' }); });
     });
   };
 
@@ -623,15 +677,15 @@
   function openRoomMenu() {
     var link = A.inviteLink(), others = Object.keys(A.idx).filter(function (id) { return id !== A.room.id; }).sort(function (a, b) { return (A.ord[b] || 0) - (A.ord[a] || 0); });
     var rooms = others.slice(0, 6).map(function (id) {
-      return h('button.room-item', { onclick: function () { m.close(); enterRoom(id); } }, h('b', A.idx[id].name || id), h('span.muted', 'mã ' + id), U.icon('right', 18));
+      return h('button.room-item', { onclick: function () { m.close(); enterRoom(id); } }, h('b', A.idx[id].name || id), U.icon('right', 18));
     });
     var m = U.modal({
       title: A.room.meta.name,
       body: h('div.form',
-        h('div.fld', h('span', 'Mời bạn bè: gửi link này (hoặc mã phòng)'),
+        h('div.fld', h('span', 'Mời bạn bè: gửi link này'),
           h('div.row', h('input.inp', { value: link, readOnly: true, onfocus: function (e) { e.target.select(); } }),
             h('button.btn', { onclick: function () { U.copy(link).then(function () { U.toast('Đã copy link mời'); }); } }, U.icon('copy', 16), 'Copy'))),
-        h('p.muted', 'Mã phòng: ', h('b', A.room.id), '. Người có link phải đăng nhập (tên không trùng) mới vào được. ', A.isOwner() ? 'Bạn có thể khoá phòng trong Cài đặt.' : ''),
+        h('p.muted', 'Người có link phải đăng nhập mới vào được. ', A.isMod() ? 'Bạn có thể đổi link hoặc khoá phòng trong Cài đặt.' : ''),
         rooms.length ? h('div.sect', h('h4', 'Chuyển nhanh sang phòng khác'), h('div.room-list', rooms)) : null),
       actions: [h('button.btn.ghost', { onclick: function () { m.close(); A.exitRoom(); } }, U.icon('home', 16), 'Tất cả phòng của tôi'), h('button.btn.primary', { onclick: function () { m.close(); } }, 'Xong')]
     });
@@ -642,7 +696,7 @@
     A.applyTheme();
     try { A.store = await Store.create(root.FIREBASE_CONFIG); }
     catch (e) { console.error(e); appRoot().appendChild(h('div.auth', h('div.card.glass.auth-card', brand(), h('div.note.warn', 'Không kết nối được Firebase: ' + e.message + '. Kiểm tra lại js/config.js.')))); return; }
-    var hm = /[#&]r=([a-z0-9]+)/i.exec(location.hash);
+    var hm = /[#&]r=([a-z0-9-]+)/i.exec(location.hash);
     if (hm) A.pendingCode = hm[1].toLowerCase();
     var first = true;
     setTimeout(function () { var re = A.store.auth.takeRedirectError && A.store.auth.takeRedirectError(); if (re) U.toast(errMsg(re), { kind: 'err' }); }, 2500);   // lỗi khi quay về từ trang Google (chế độ chuyển hướng)
@@ -654,7 +708,7 @@
     });
   }
   root.addEventListener('hashchange', function () {
-    var hm = /[#&]r=([a-z0-9]+)/i.exec(location.hash); if (!hm) return;
+    var hm = /[#&]r=([a-z0-9-]+)/i.exec(location.hash); if (!hm) return;
     var code = hm[1].toLowerCase();
     if (!A.user) { A.pendingCode = code; return; }
     if (!A.room || A.room.id !== code) openByCode(code);

@@ -9,10 +9,11 @@ with sync_playwright() as p:
     ctx.route('**/*', lambda r: r.continue_() if r.request.url.startswith('http://localhost') else r.abort())
     pg=ctx.new_page(); pg.on('pageerror', lambda e: errs.append(str(e)))
     seed(pg)
-    pg.goto('http://localhost:8765/index.html#r=orandoca1'); pg.wait_for_selector('.auth-tabs')
+    link=pg.get_attribute('#res a','href'); print('seed link',link); assert '#r=phongthunghiem-' in link
+    pg.goto(link); pg.wait_for_selector('.auth-tabs')
     assert 'mời' in pg.inner_text('.auth-card')     # hiện ghi chú được mời vào phòng
     pg.fill('input[name=username]','AI Test 2'); pg.fill('input[name=password]','DemoPass123'); pg.click('button[type=submit]'); pg.wait_for_selector('.shell')
-    assert pg.inner_text('.rname')=='Ổ Rắn Độc A1'
+    assert pg.inner_text('.rname')=='Phòng thử nghiệm'
     # ---- nhảy ngày ở Lịch của tôi
     pg.click('.tab >> text=Lịch của tôi'); pg.wait_for_selector('.wk-scroll')
     pg.click('.me-nav .datepick'); pg.wait_for_selector('.dp-grid'); pg.screenshot(path='/tmp/shots/b1_datepicker.png')

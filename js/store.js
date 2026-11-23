@@ -3,8 +3,9 @@
  *   - 'local'   : localStorage (chỉ để dùng thử; đồng bộ giữa các tab cùng máy)
  * API: init(cfg), get(path), set(path,v), update({path:value|null,...}), newKey(path), remove(path),
  *      listen(path, cb, {limitLast, onError}) -> hàm huỷ, now(), mode, onConn(cb)
- *   auth: { onChange(cb(user|null)), signUp(name,pass), signIn(name,pass), signOut(), changePassword(old,new), user() }
- *        user = { uid, name } ; tên đăng nhập chuyển thành email giả slug@ranhchua.app (Firebase) hoặc lưu cục bộ (chế độ thử).
+ *   auth: { onChange(cb(user|null)), signUp(name,pass), signIn(name,pass), signOut(), changePassword(old,new), user(),
+ *           setRemember(bool), signInGoogle(hint), linkGoogle(hint), unlinkGoogle(), linkPassword(name,pass), setDisplayName(name), deleteSelf() }
+ *        user = { uid, name, providers:['password','google.com'], email } ; tên đăng nhập chuyển thành email giả slug@ranhchua.app (Firebase) hoặc lưu cục bộ (chế độ thử).
  */
 (function (root) {
   'use strict';
@@ -40,40 +41,90 @@
       });
     }
 
-    /* ---- Tài khoản giả lập trong localStorage (chỉ để dùng thử) ---- */
-    var AK = 'rc_local_auth_v1', AU = JSON.parse(localStorage.getItem(AK) || '{"acc":{},"cur":null}'), acbs = [];
+    /* ---- Tài khoản giả lập trong localStorage (chỉ để dùng thử) ----
+     * AU.acc: { khoá: {uid, name, h?(băm mật khẩu), g?(email Google giả lập)} } ; khoá = slug tên (có mật khẩu) hoặc 'g:'+uid (chỉ Google)
+     * AU.goo: { emailGoogle: uid } ; AU.cur: uid đang đăng nhập (ghi nhớ) ; sessionStorage SK: đăng nhập chỉ trong phiên này */
+    var AK = 'rc_local_auth_v1', SK = 'rc_local_cur', remember = true, acbs = [];
+    function aload() { var o; try { o = JSON.parse(localStorage.getItem(AK) || 'null'); } catch (e) { o = null; } o = o || {}; o.acc = o.acc || {}; o.goo = o.goo || {}; if (o.cur === undefined) o.cur = null; return o; }
+    var AU = aload();
     function asave() { try { localStorage.setItem(AK, JSON.stringify(AU)); } catch (e) { } }
-    function acur() { var a = AU.cur && Object.keys(AU.acc).map(function (k) { return AU.acc[k]; }).filter(function (x) { return x.uid === AU.cur; })[0]; return a ? { uid: a.uid, name: a.name } : null; }
+    function curUid() { var s = null; try { s = sessionStorage.getItem(SK); } catch (e) { } return s || AU.cur; }
+    function keyOf(uid) { return Object.keys(AU.acc).filter(function (k) { return AU.acc[k].uid === uid; })[0]; }
+    function acur() {
+      var uid = curUid(), k = uid && keyOf(uid); if (!k) return null; var a = AU.acc[k];
+      return { uid: a.uid, name: a.name || '', providers: [a.h ? 'password' : null, a.g ? 'google.com' : null].filter(Boolean), email: a.g || null };
+    }
     function anotify() { var u = acur(); acbs.forEach(function (f) { f(u); }); }
-    root.addEventListener('storage', function (e) { if (e.key === AK) { AU = JSON.parse(e.newValue || '{"acc":{},"cur":null}'); anotify(); } });
+    function setCur(uid) {
+      try { sessionStorage.removeItem(SK); } catch (e) { }
+      if (uid && !remember) { AU.cur = null; try { sessionStorage.setItem(SK, uid); } catch (e) { } } else AU.cur = uid;
+      asave(); anotify();
+    }
+    root.addEventListener('storage', function (e) { if (e.key === AK) { AU = aload(); anotify(); } });
     function sha(x) {
       if (root.crypto && crypto.subtle) return crypto.subtle.digest('SHA-256', new TextEncoder().encode(x)).then(function (b) { return Array.prototype.map.call(new Uint8Array(b), function (v) { return ('0' + v.toString(16)).slice(-2); }).join(''); });
       return Promise.resolve(btoa(unescape(encodeURIComponent(x))));
     }
+    function newUid() { return 'u' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+    function me() { var u = curUid(), k = u && keyOf(u); if (!k) throw mkErr('auth/no-user'); return { k: k, a: AU.acc[k] }; }
+    function gEmail(h) { var e = String(h || '').trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+$/.test(e)) throw mkErr('auth/invalid-email'); return e; }
     var auth = {
       user: acur,
       onChange: function (cb) { acbs.push(cb); setTimeout(function () { cb(acur()); }, 0); },
+      setRemember: function (on) { remember = !!on; return Promise.resolve(); },
       signUp: function (name, pass) {
         var k = Store.slug(name); if (!k) return Promise.reject(mkErr('auth/invalid-email'));
         if (String(pass).length < 6) return Promise.reject(mkErr('auth/weak-password'));
         if (AU.acc[k]) return Promise.reject(mkErr('auth/email-already-in-use'));
         return sha('rc:' + k + ':' + pass).then(function (h) {
-          var uid = 'u' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-          AU.acc[k] = { uid: uid, name: name, h: h }; AU.cur = uid; asave(); anotify(); return acur();
+          var uid = newUid(); AU.acc[k] = { uid: uid, name: name, h: h }; setCur(uid); return acur();
         });
       },
       signIn: function (name, pass) {
         var k = Store.slug(name), a = AU.acc[k];
         return sha('rc:' + k + ':' + pass).then(function (h) {
           if (!a || a.h !== h) throw mkErr('auth/invalid-credential');
-          AU.cur = a.uid; asave(); anotify(); return acur();
+          setCur(a.uid); return acur();
         });
       },
-      signOut: function () { AU.cur = null; asave(); anotify(); return Promise.resolve(); },
+      /** Google giả lập: hint = email Google tự nhập (chế độ thử không có Google thật) */
+      signInGoogle: function (hint) {
+        try { var e = gEmail(hint), uid = AU.goo[e];
+          if (!uid) { uid = newUid(); AU.acc['g:' + uid] = { uid: uid, name: e.split('@')[0], g: e }; AU.goo[e] = uid; }
+          setCur(uid); return Promise.resolve(acur());
+        } catch (er) { return Promise.reject(er); }
+      },
+      linkGoogle: function (hint) {
+        try { var e = gEmail(hint), m = me();
+          if (m.a.g) throw mkErr('auth/provider-already-linked');
+          if (AU.goo[e] && AU.goo[e] !== m.a.uid) throw mkErr('auth/credential-already-in-use');
+          m.a.g = e; AU.goo[e] = m.a.uid; asave(); anotify(); return Promise.resolve(acur());
+        } catch (er) { return Promise.reject(er); }
+      },
+      unlinkGoogle: function () {
+        try { var m = me(); if (!m.a.g) throw mkErr('auth/no-such-provider'); if (!m.a.h) throw mkErr('auth/no-other-method');
+          delete AU.goo[m.a.g]; delete m.a.g; asave(); return Promise.resolve(acur());
+        } catch (er) { return Promise.reject(er); }
+      },
+      linkPassword: function (name, pass) {
+        try { var m = me(), k = Store.slug(name);
+          if (m.a.h) throw mkErr('auth/provider-already-linked'); if (!k) throw mkErr('auth/invalid-email');
+          if (String(pass).length < 6) throw mkErr('auth/weak-password');
+          if (AU.acc[k] && AU.acc[k].uid !== m.a.uid) throw mkErr('auth/email-already-in-use');
+        } catch (er) { return Promise.reject(er); }
+        var mm = me(), k2 = Store.slug(name);
+        return sha('rc:' + k2 + ':' + pass).then(function (h) { delete AU.acc[mm.k]; mm.a.h = h; AU.acc[k2] = mm.a; asave(); anotify(); return acur(); });
+      },
+      setDisplayName: function (name) { try { me().a.name = name; asave(); anotify(); return Promise.resolve(acur()); } catch (e) { return Promise.reject(e); } },
+      deleteSelf: function () {
+        try { var m = me(); if (m.a.g) delete AU.goo[m.a.g]; delete AU.acc[m.k]; setCur(null); return Promise.resolve(); } catch (e) { return Promise.reject(e); }
+      },
+      signOut: function () { setCur(null); return Promise.resolve(); },
       changePassword: function (oldP, newP) {
-        var u = acur(); if (!u) return Promise.reject(mkErr('auth/no-user'));
+        var m; try { m = me(); } catch (e) { return Promise.reject(e); }
+        if (!m.a.h) return Promise.reject(mkErr('auth/no-password'));
         if (String(newP).length < 6) return Promise.reject(mkErr('auth/weak-password'));
-        var k = Store.slug(u.name);
+        var k = m.k;
         return sha('rc:' + k + ':' + oldP).then(function (h) {
           if (AU.acc[k].h !== h) throw mkErr('auth/invalid-credential');
           return sha('rc:' + k + ':' + newP).then(function (h2) { AU.acc[k].h = h2; asave(); });
@@ -103,29 +154,55 @@
 
   function Firebase() {
     var d, m, am, au, off = 0, connCbs = [], connected = false, cbs = [], cur = null, ready = false;
-    function pub(u) { return u ? { uid: u.uid, name: u.displayName || '' } : null; }
+    var redirErr = null;
+    function pub(u) {
+      return u ? { uid: u.uid, name: u.displayName || '', email: u.email || null, providers: (u.providerData || []).map(function (p) { return p.providerId; }) } : null;
+    }
+    function gprov() { var p = new am.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return p; }
+    function need() { var u = au.currentUser; return u ? Promise.resolve(u) : Promise.reject(mkErr('auth/no-user')); }
     function wrap(p) { return p.then(function (r) { return pub(r.user); }); }
     return {
       mode: 'firebase',
       auth: {
-        user: function () { return cur; },
+        user: function () { return au && au.currentUser ? pub(au.currentUser) : cur; },
         onChange: function (cb) { cbs.push(cb); if (ready) cb(cur); },
+        /** on=true: nhớ đăng nhập trên máy này (mặc định của Firebase); false: chỉ trong phiên tab hiện tại */
+        setRemember: function (on) { return am.setPersistence(au, on ? am.browserLocalPersistence : am.browserSessionPersistence).catch(function () { }); },
         signUp: function (name, pass) {
           return am.createUserWithEmailAndPassword(au, Store.slug(name) + DOMAIN, pass).then(function (r) {
-            return am.updateProfile(r.user, { displayName: name }).then(function () { cur = { uid: r.user.uid, name: name }; return cur; });
+            return am.updateProfile(r.user, { displayName: name }).then(function () { cur = pub(r.user); return cur; });
           });
         },
         signIn: function (name, pass) { return wrap(am.signInWithEmailAndPassword(au, Store.slug(name) + DOMAIN, pass)); },
+        /** Mở cửa sổ Google; nếu bị chặn popup thì chuyển hướng cả trang (khi quay lại, onChange tự chạy) */
+        signInGoogle: function () {
+          return am.signInWithPopup(au, gprov()).then(function (r) { return pub(r.user); }, function (e) {
+            if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) return am.signInWithRedirect(au, gprov()).then(function () { return new Promise(function () { }); });
+            throw e;
+          });
+        },
+        linkGoogle: function () { return need().then(function (u) { return am.linkWithPopup(u, gprov()); }).then(function (r) { cur = pub(r.user); return cur; }); },
+        unlinkGoogle: function () { return need().then(function (u) { if (u.providerData.length < 2) throw mkErr('auth/no-other-method'); return am.unlink(u, 'google.com'); }).then(function (u) { cur = pub(u); return cur; }); },
+        linkPassword: function (name, pass) {
+          return need().then(function (u) { return am.linkWithCredential(u, am.EmailAuthProvider.credential(Store.slug(name) + DOMAIN, pass)); }).then(function (r) { cur = pub(r.user); return cur; });
+        },
+        setDisplayName: function (name) { return need().then(function (u) { return am.updateProfile(u, { displayName: name }).then(function () { cur = pub(u); return cur; }); }); },
+        deleteSelf: function () { return need().then(function (u) { return am.deleteUser(u); }); },
+        takeRedirectError: function () { var e = redirErr; redirErr = null; return e; },
         signOut: function () { return am.signOut(au); },
         changePassword: function (oldP, newP) {
-          var u = au.currentUser; if (!u) return Promise.reject(mkErr('auth/no-user'));
-          return am.reauthenticateWithCredential(u, am.EmailAuthProvider.credential(u.email, oldP)).then(function () { return am.updatePassword(u, newP); });
+          return need().then(function (u) {
+            var pe = (u.providerData.filter(function (p) { return p.providerId === 'password'; })[0] || {}).email;
+            if (!pe) throw mkErr('auth/no-password');
+            return am.reauthenticateWithCredential(u, am.EmailAuthProvider.credential(pe, oldP)).then(function () { return am.updatePassword(u, newP); });
+          });
         }
       },
       init: function (cfg) {
         var base = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/';
         return Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-database.js'), import(base + 'firebase-auth.js')]).then(function (r) {
           var app = r[0].initializeApp(cfg); m = r[1]; am = r[2]; d = m.getDatabase(app); au = am.getAuth(app);
+          am.getRedirectResult(au).catch(function (e) { redirErr = e; });
           am.onAuthStateChanged(au, function (u) { cur = pub(u); ready = true; cbs.forEach(function (f) { f(cur); }); });
           m.onValue(m.ref(d, '.info/serverTimeOffset'), function (s) { off = s.val() || 0; });
           m.onValue(m.ref(d, '.info/connected'), function (s) { connected = !!s.val(); connCbs.forEach(function (f) { f(connected); }); });
@@ -156,7 +233,13 @@
       'auth/invalid-credential': 'Sai tên hoặc mật khẩu.', 'auth/wrong-password': 'Sai tên hoặc mật khẩu.', 'auth/user-not-found': 'Sai tên hoặc mật khẩu.', 'auth/invalid-login-credentials': 'Sai tên hoặc mật khẩu.',
       'auth/weak-password': 'Mật khẩu cần ít nhất 6 ký tự.', 'auth/invalid-email': 'Tên không hợp lệ: cần có ít nhất một chữ hoặc số.',
       'auth/network-request-failed': 'Không kết nối được mạng, thử lại nhé.', 'auth/too-many-requests': 'Thử quá nhiều lần, đợi một lát rồi thử lại.',
-      'auth/operation-not-allowed': 'Chủ web chưa bật đăng nhập Email/Password trong Firebase Console (xem HUONG-DAN.md).',
+      'auth/operation-not-allowed': 'Chủ web chưa bật kiểu đăng nhập này (Email/Password hoặc Google) trong Firebase Console (xem HUONG-DAN.md).',
+      'auth/popup-closed-by-user': 'Bạn đã đóng cửa sổ Google trước khi hoàn tất.', 'auth/cancelled-popup-request': 'Bạn đã đóng cửa sổ Google trước khi hoàn tất.',
+      'auth/popup-blocked': 'Trình duyệt đã chặn cửa sổ Google. Hãy cho phép cửa sổ bật lên (popup) cho trang này rồi thử lại.',
+      'auth/unauthorized-domain': 'Địa chỉ web này chưa được thêm vào Authorized domains trong Firebase Console (Authentication → Settings).',
+      'auth/credential-already-in-use': 'Tài khoản Google này đã được dùng cho một tài khoản khác trên web. Hãy dùng tài khoản Google khác, hoặc đăng nhập thẳng bằng Google đó.',
+      'auth/provider-already-linked': 'Tài khoản của bạn đã liên kết kiểu đăng nhập này rồi.', 'auth/no-other-method': 'Bạn cần còn một cách đăng nhập khác (mật khẩu hoặc Google) trước khi huỷ liên kết.',
+      'auth/no-password': 'Tài khoản này chưa đặt mật khẩu.', 'auth/no-such-provider': 'Tài khoản chưa liên kết Google.', 'name/taken': 'Tên này đã có người dùng rồi. Hãy chọn tên khác (không phân biệt hoa/thường, dấu và khoảng trắng).',
       'auth/requires-recent-login': 'Hãy đăng nhập lại rồi thử tiếp.', 'auth/no-user': 'Bạn chưa đăng nhập.'
     };
     return map[c] || (e && e.message) || 'Có lỗi xảy ra';

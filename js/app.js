@@ -1,7 +1,8 @@
 /* app.js - khung ứng dụng: tài khoản, danh sách phòng riêng, vào/rời phòng, đồng bộ, điều hướng, thông báo.
  *
  * Mô hình v2 (tài khoản):
- *   - Mỗi người có 1 tài khoản (tên không trùng + mật khẩu) -> uid.
+ *   - Mỗi người có 1 tài khoản (tên không trùng; đăng nhập bằng mật khẩu và/hoặc Google) -> uid.
+ *   - names/$slug              : sổ tên duy nhất {slug tên -> uid} dùng chung cho cả hai cách đăng nhập.
  *   - users/$uid               : hồ sơ {name, emoji, color}; users/$uid/rooms/$room = {name, ts}  (danh sách phòng RIÊNG của người đó)
  *   - rooms/$room/meta         : {name, owner:uid, createdAt, locked?}
  *   - rooms/$room/members/$uid : {name, emoji, color, joinedAt, showLb}
@@ -88,6 +89,32 @@
   A.copyLink = copyLink;
 
   /* ================= ĐĂNG NHẬP / TẠO TÀI KHOẢN ================= */
+  function rememberVal() { return U.lsGet('rc_remember', true) !== false; }
+  function googleIcon() {
+    var s = h('span.gico');
+    s.innerHTML = '<svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6l-7.9-6.2A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.2C6.5 42.6 14.6 48 24 48z"/></svg>';
+    return s;
+  }
+  /** Chế độ thử không có Google thật: hỏi một email bất kỳ để giả lập. Firebase: trả '' (cửa sổ Google tự hỏi). null = người dùng huỷ. */
+  A.googleHint = async function () {
+    if (!A.store || A.store.mode !== 'local') return '';
+    return U.prompt('Google (giả lập ở chế độ thử)', 'Nhập một email Google bất kỳ để thử. Khi nối Firebase, nút này mở cửa sổ Google thật.', '', { placeholder: 'ban@gmail.com', ok: 'Tiếp tục', max: 80 });
+  };
+  /** Sổ tên duy nhất names/$slug = uid. Ném {code:'name/taken'} nếu tên đã thuộc người khác. */
+  async function claimName(name, uid) {
+    var k = U.slug(name), cur = null;
+    try { cur = await A.store.get('names/' + k); } catch (e) { cur = null; }
+    if (cur && cur !== uid) throw { code: 'name/taken' };
+    if (cur === uid) return;
+    try { await A.store.set('names/' + k, uid); }
+    catch (e) {
+      var again = null; try { again = await A.store.get('names/' + k); } catch (e2) { }
+      if (again && again !== uid) throw { code: 'name/taken' };
+      throw e;
+    }
+  }
+  A.claimName = claimName;
+
   function showAuth(o) {
     o = o || {}; var mode = o.mode || 'in', app = appRoot();
     var st = { emoji: U.EMOJIS[Math.floor(Math.random() * U.EMOJIS.length)], color: U.COLORS[Math.floor(Math.random() * U.COLORS.length)] };
@@ -101,6 +128,9 @@
       U.COLORS.forEach(function (c) { col.appendChild(h('button.pk.sw' + (st.color === c ? '.on' : ''), { type: 'button', style: { background: c }, onclick: function () { st.color = c; drawPk(); } })); });
     }
     drawPk();
+    var remember = rememberVal();
+    var rem = h('label.chk', h('input', { type: 'checkbox', checked: remember, onchange: function (e) { remember = e.target.checked; U.lsSet('rc_remember', remember); } }), h('span', 'Ghi nhớ đăng nhập trên máy này (lần sau mở lại tự vào)'));
+    var gbtn = h('button.btn.block.gbtn', { type: 'button', onclick: google }, googleIcon(), 'Tiếp tục với Google');
     var btn = h('button.btn.primary.block', { type: 'submit' }, mode === 'up' ? 'Tạo tài khoản' : 'Đăng nhập');
     var form = h('form.form', { onsubmit: function (e) { e.preventDefault(); submit(); }, autocomplete: 'on' },
       h('label.fld', h('span', mode === 'up' ? 'Tên của bạn (không được trùng với người khác)' : 'Tên của bạn'), name),
@@ -109,8 +139,8 @@
       mode === 'up' ? h('div.fld', h('span', 'Biểu tượng'), emo) : null,
       mode === 'up' ? h('div.fld', h('span', 'Màu'), col) : null,
       mode === 'up' ? h('p.hint', 'Tên không phân biệt hoa/thường, dấu và khoảng trắng: "Đạt", "dat" và "ĐẠT" là cùng một tên. Muốn gọi nhau khác đi trong từng nhóm chat, dùng "Biệt danh".') : null,
-      mode === 'up' ? h('p.hint', 'Hãy nhớ mật khẩu hoặc để trình duyệt lưu giúp: web miễn phí không có chức năng gửi email lấy lại mật khẩu.') : null,
-      btn);
+      mode === 'up' ? h('p.hint', 'Hãy nhớ mật khẩu hoặc để trình duyệt lưu giúp: web miễn phí không có chức năng gửi email lấy lại mật khẩu (dùng Google thì không lo quên).') : null,
+      rem, btn);
     async function submit() {
       var nm = name.value.trim().replace(/\s+/g, ' '), pw = pass.value;
       if (!nm) { U.toast('Bạn chưa nhập tên', { kind: 'err' }); return; }
@@ -120,15 +150,28 @@
         if (pw.length < 6) { U.toast('Mật khẩu cần ít nhất 6 ký tự', { kind: 'err' }); return; }
         if (pw !== pass2.value) { U.toast('Hai lần nhập mật khẩu chưa giống nhau', { kind: 'err' }); return; }
       } else if (!pw) { U.toast('Bạn chưa nhập mật khẩu', { kind: 'err' }); return; }
-      btn.disabled = true; A.authBusy = true;
+      btn.disabled = gbtn.disabled = true; A.authBusy = true;
       try {
         var u;
+        await A.store.auth.setRemember(remember);
         if (mode === 'up') {
+          if (await A.store.get('names/' + U.slug(nm)).catch(function () { return null; })) throw { code: 'name/taken' };   // tên đã có người dùng (kể cả bằng Google)
           u = await A.store.auth.signUp(nm, pw);
+          try { await claimName(nm, u.uid); }
+          catch (e) { if (e && e.code === 'name/taken') { await A.store.auth.deleteSelf().catch(function () { }); throw e; } }   // lỗi khác (vd. chưa cập nhật Rules): vẫn cho vào, email đăng nhập đã bảo đảm không trùng
           await A.store.set('users/' + u.uid, { name: nm, emoji: st.emoji, color: st.color, createdAt: A.store.now() });
         } else u = await A.store.auth.signIn(nm, pw);
         A.authBusy = false; await startSession(u, { isNew: mode === 'up' });
-      } catch (e) { A.authBusy = false; btn.disabled = false; console.error(e); U.toast(errMsg(e), { kind: 'err' }); }
+      } catch (e) { A.authBusy = false; btn.disabled = gbtn.disabled = false; console.error(e); U.toast(errMsg(e), { kind: 'err' }); }
+    }
+    async function google() {
+      var hint = await A.googleHint(); if (hint === null) return;
+      btn.disabled = gbtn.disabled = true; A.authBusy = true;
+      try {
+        await A.store.auth.setRemember(remember);
+        var u = await A.store.auth.signInGoogle(hint);
+        A.authBusy = false; await startSession(u);
+      } catch (e) { A.authBusy = false; btn.disabled = gbtn.disabled = false; console.error(e); U.toast(errMsg(e), { kind: 'err' }); }
     }
     app.appendChild(h('div.auth', h('div.card.glass.auth-card', brand(),
       h('p.lead', 'Báo cho nhau biết khi nào rảnh, khi nào bận, để chốt kèo đi chơi nhanh hơn.'),
@@ -137,7 +180,8 @@
       h('div.seg.auth-tabs', [['in', 'Đăng nhập'], ['up', 'Tạo tài khoản']].map(function (x) {
         return h('button' + (mode === x[0] ? '.on' : ''), { type: 'button', onclick: function () { if (mode !== x[0]) showAuth({ mode: x[0] }); } }, x[1]);
       })),
-      form, modeBanner())));
+      form, h('div.or', h('span', 'hoặc')), gbtn,
+      h('p.hint', 'Đăng nhập Google chỉ lấy email để nhận ra bạn; tên hiển thị trên web do bạn tự đặt.'), modeBanner())));
     setTimeout(function () { name.focus(); }, 60);
   }
 
@@ -150,10 +194,48 @@
     return Object.assign({ id: u.uid }, pr);
   }
 
+  /** Lần đầu đăng nhập bằng Google: chọn tên hiển thị duy nhất + biểu tượng + màu */
+  function showPickName(u, opt) {
+    opt = opt || {}; var app = appRoot();
+    var st = { emoji: U.EMOJIS[Math.floor(Math.random() * U.EMOJIS.length)], color: U.COLORS[Math.floor(Math.random() * U.COLORS.length)] };
+    var name = h('input.inp', { value: String(u.name || '').replace(/\s+/g, ' ').trim().slice(0, 24), placeholder: 'Tên của bạn (vd: Minh)', maxLength: 24, autocapitalize: 'off', spellcheck: false });
+    var emo = h('div.pick'), col = h('div.pick');
+    function drawPk() {
+      U.clear(emo); U.clear(col);
+      U.EMOJIS.forEach(function (e) { emo.appendChild(h('button.pk' + (st.emoji === e ? '.on' : ''), { type: 'button', onclick: function () { st.emoji = e; drawPk(); } }, e)); });
+      U.COLORS.forEach(function (c) { col.appendChild(h('button.pk.sw' + (st.color === c ? '.on' : ''), { type: 'button', style: { background: c }, onclick: function () { st.color = c; drawPk(); } })); });
+    }
+    drawPk();
+    var btn = h('button.btn.primary.block', { type: 'submit' }, 'Tiếp tục');
+    var form = h('form.form', { onsubmit: function (e) { e.preventDefault(); go(); } },
+      h('label.fld', h('span', 'Tên hiển thị (không được trùng với người khác)'), name),
+      h('div.fld', h('span', 'Biểu tượng'), emo), h('div.fld', h('span', 'Màu'), col),
+      h('p.hint', 'Tên không phân biệt hoa/thường, dấu và khoảng trắng. Bạn bè sẽ thấy tên này, không thấy email Google của bạn.'), btn);
+    async function go() {
+      var nm = name.value.trim().replace(/\s+/g, ' ');
+      if (nm.length < 2 || !U.slug(nm)) { U.toast('Tên cần ít nhất 2 ký tự và có chữ hoặc số', { kind: 'err' }); return; }
+      btn.disabled = true; A.authBusy = true;
+      try {
+        await claimName(nm, u.uid);
+        await A.store.set('users/' + u.uid, { name: nm, emoji: st.emoji, color: st.color, createdAt: A.store.now() });
+        await A.store.auth.setDisplayName(nm);
+        A.authBusy = false; await startSession(Object.assign({}, u, { name: nm }), { isNew: true });
+      } catch (e) { A.authBusy = false; btn.disabled = false; console.error(e); U.toast(errMsg(e), { kind: 'err' }); }
+    }
+    app.appendChild(h('div.auth', h('div.card.glass.auth-card', brand(),
+      h('h3', 'Chào bạn! Đặt tên hiển thị'), h('p.lead', 'Bạn vừa đăng nhập bằng Google. Chọn một cái tên để bạn bè nhận ra bạn trong phòng.'),
+      A.pendingCode ? h('div.note', U.icon('link', 16), ' Xong bước này bạn sẽ vào phòng được mời.') : null,
+      form, h('button.btn.ghost.block.mt', { type: 'button', onclick: function () { A.store.auth.signOut(); } }, U.icon('logout', 16), 'Dùng tài khoản khác'), modeBanner())));
+    setTimeout(function () { name.focus(); name.select(); }, 60);
+  }
+
   async function startSession(u, opt) {
     opt = opt || {};
     try {
+      var pr = await A.store.get('users/' + u.uid);
+      if ((!pr || !pr.name) && (u.providers || []).indexOf('password') < 0) { showPickName(u, opt); return; }   // tài khoản Google mới: chưa có tên
       A.user = await ensureProfile(u);
+      claimName(A.user.name, u.uid).catch(function () { });   // tài khoản tạo từ bản cũ chưa có trong sổ tên
       A.ord = U.lsGet('rc_ord_' + A.user.id, {});
       if (A.idxUnsub) A.idxUnsub();
       A.idx = {}; A.idxReady = false;
@@ -186,19 +268,44 @@
     }));
   };
   A.accountModal = function () {
-    var emo = h('div.pick'), col = h('div.pick'), head = h('div.row.prof');
+    var emo = h('div.pick'), col = h('div.pick'), head = h('div.row.prof'), ways = h('div.ways');
     function draw() {
       U.clear(emo); U.clear(col); U.clear(head);
-      head.appendChild(U.avatar(A.user, 56)); head.appendChild(h('div', h('b', A.user.name), h('div.muted.sm', 'Tên đăng nhập không đổi được. Muốn gọi khác đi trong từng nhóm: dùng Biệt danh trong Chat.')));
+      head.appendChild(U.avatar(A.user, 56)); head.appendChild(h('div', h('b', A.user.name), h('div.muted.sm', 'Tên hiển thị không đổi được. Muốn gọi khác đi trong từng nhóm: dùng Biệt danh trong Chat.')));
       U.EMOJIS.forEach(function (e) { emo.appendChild(h('button.pk' + (A.user.emoji === e ? '.on' : ''), { onclick: function () { A.updateProfile({ emoji: e }).then(draw, function (er) { U.toast(errMsg(er), { kind: 'err' }); }); } }, e)); });
       U.COLORS.forEach(function (c) { col.appendChild(h('button.pk.sw' + (A.user.color === c ? '.on' : ''), { style: { background: c }, onclick: function () { A.updateProfile({ color: c }).then(draw, function (er) { U.toast(errMsg(er), { kind: 'err' }); }); } })); });
+      drawWays();
+    }
+    function drawWays() {
+      U.clear(ways); var au = A.store.auth.user() || {}, pv = au.providers || [], hasG = pv.indexOf('google.com') >= 0, hasP = pv.indexOf('password') >= 0;
+      ways.appendChild(h('div.way', googleIcon(), h('div.grow', h('b', 'Google'), h('div.muted.sm', hasG ? 'Đã liên kết' + (au.email ? ' (' + au.email + ')' : '') + '. Có thể đăng nhập bằng nút "Tiếp tục với Google".' : 'Chưa liên kết. Liên kết để đăng nhập nhanh, không lo quên mật khẩu.')),
+        hasG ? (hasP ? h('button.btn.sm', { onclick: unlinkG }, 'Huỷ liên kết') : null) : h('button.btn.sm.primary', { onclick: linkG }, 'Liên kết Google')));
+      ways.appendChild(h('div.way', h('span.gico', U.icon('key', 18)), h('div.grow', h('b', 'Tên + mật khẩu'), h('div.muted.sm', hasP ? 'Đăng nhập bằng tên "' + A.user.name + '" và mật khẩu của bạn.' : 'Chưa đặt. Đặt mật khẩu để cũng đăng nhập được bằng tên "' + A.user.name + '".')),
+        hasP ? h('button.btn.sm', { onclick: changePassword }, 'Đổi mật khẩu') : h('button.btn.sm.primary', { onclick: setPassword }, 'Đặt mật khẩu')));
+    }
+    async function linkG() {
+      var hint = await A.googleHint(); if (hint === null) return;
+      try { await A.store.auth.linkGoogle(hint); U.toast('Đã liên kết Google'); drawWays(); } catch (e) { U.toast(errMsg(e), { kind: 'err' }); }
+    }
+    async function unlinkG() {
+      if (!(await U.confirm('Huỷ liên kết Google?', 'Sau đó bạn chỉ đăng nhập được bằng tên và mật khẩu.', 'Huỷ liên kết', true))) return;
+      try { await A.store.auth.unlinkGoogle(); U.toast('Đã huỷ liên kết Google'); drawWays(); } catch (e) { U.toast(errMsg(e), { kind: 'err' }); }
+    }
+    function setPassword() {
+      var n1 = h('input.inp', { type: 'password', placeholder: 'Mật khẩu (từ 6 ký tự)', autocomplete: 'new-password' }), n2 = h('input.inp', { type: 'password', placeholder: 'Nhập lại mật khẩu', autocomplete: 'new-password' });
+      var m2 = U.modal({ title: 'Đặt mật khẩu', body: h('div.form', h('p.muted', 'Tên đăng nhập sẽ là "' + A.user.name + '". Lưu ý: không có email lấy lại mật khẩu, hãy nhớ nó.'), h('div.fld', n1), h('div.fld', n2)),
+        actions: [h('button.btn.ghost', { onclick: function () { m2.close(); } }, 'Huỷ'), h('button.btn.primary', { onclick: ok }, 'Đặt mật khẩu')] });
+      async function ok() {
+        if (n1.value.length < 6) { U.toast('Mật khẩu cần ít nhất 6 ký tự', { kind: 'err' }); return; }
+        if (n1.value !== n2.value) { U.toast('Hai lần nhập mật khẩu chưa giống nhau', { kind: 'err' }); return; }
+        try { await A.store.auth.linkPassword(A.user.name, n1.value); m2.close(); U.toast('Đã đặt mật khẩu'); drawWays(); } catch (e) { U.toast(errMsg(e), { kind: 'err' }); }
+      }
     }
     draw();
     var m = U.modal({
       title: 'Tài khoản của tôi',
-      body: h('div.form', head, h('div.fld.mt', h('span', 'Biểu tượng'), emo), h('div.fld', h('span', 'Màu'), col),
-        h('div.row', h('button.btn.sm', { onclick: changePassword }, U.icon('key', 16), 'Đổi mật khẩu'))),
-      actions: [h('button.btn.danger', { onclick: function () { m.close(); U.confirm('Đăng xuất?', 'Bạn sẽ cần nhập lại tên và mật khẩu để vào lại. Dữ liệu của bạn vẫn được giữ.', 'Đăng xuất').then(function (ok) { if (ok) A.logout(); }); } }, U.icon('logout', 16), 'Đăng xuất'),
+      body: h('div.form', head, h('div.fld.mt', h('span', 'Biểu tượng'), emo), h('div.fld', h('span', 'Màu'), col), h('div.fld.mt', h('span', 'Cách đăng nhập'), ways)),
+      actions: [h('button.btn.danger', { onclick: function () { m.close(); U.confirm('Đăng xuất?', 'Bạn sẽ cần đăng nhập lại để vào lại. Dữ liệu của bạn vẫn được giữ.', 'Đăng xuất').then(function (ok) { if (ok) A.logout(); }); } }, U.icon('logout', 16), 'Đăng xuất'),
         h('button.btn.primary', { onclick: function () { m.close(); } }, 'Xong')]
     });
   };
@@ -538,6 +645,7 @@
     var hm = /[#&]r=([a-z0-9]+)/i.exec(location.hash);
     if (hm) A.pendingCode = hm[1].toLowerCase();
     var first = true;
+    setTimeout(function () { var re = A.store.auth.takeRedirectError && A.store.auth.takeRedirectError(); if (re) U.toast(errMsg(re), { kind: 'err' }); }, 2500);   // lỗi khi quay về từ trang Google (chế độ chuyển hướng)
     A.store.auth.onChange(function (u) {
       if (A.authBusy) return;
       if (!u) { stopRoom(); A.room = null; A.user = null; first = false; showAuth(); return; }

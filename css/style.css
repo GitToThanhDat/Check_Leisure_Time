@@ -320,3 +320,12 @@ details summary { cursor: pointer; color: var(--muted); font-size: .85rem; } .wa
 .cell, .tc, .hm-c { contain: layout paint; }
 @media (hover: none) { .btn:hover, .chip:hover { background: inherit; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ===== Google + cách đăng nhập ===== */
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .82rem; margin: 14px 0 10px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line, rgba(128,128,128,.28)); }
+.gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.gico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; }
+.ways { display: flex; flex-direction: column; gap: 8px; }
+.way { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, rgba(128,128,128,.28)); }
+.way .grow { flex: 1; min-width: 0; } .way .btn { flex: none; }

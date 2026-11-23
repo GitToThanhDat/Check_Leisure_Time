@@ -35,8 +35,11 @@ Giao diện Firebase đôi khi đổi tên nút một chút, nhưng các bước
    - Location: chọn **Singapore (asia-southeast1)** cho gần Việt Nam.
    - Security rules: chọn **Start in locked mode** (sẽ dán luật ở bước sau).
    - Không có bước nào đòi thẻ. Nếu thấy yêu cầu nâng cấp gói Blaze thì bạn đang bấm nhầm sang Firestore/Functions/Storage; Realtime Database dùng gói Spark là đủ.
-3. Vào tab **Rules** của Realtime Database, xoá nội dung cũ, **dán toàn bộ nội dung file `database.rules.json`**, bấm **Publish**. (Nếu trước đây bạn đã dán luật bản PIN cũ, **phải dán lại bản mới**, nếu không web sẽ báo Permission denied.)
-4. **Bật đăng nhập bằng tài khoản (bắt buộc):** menu trái **Build → Authentication → Get started → Sign-in method → Email/Password → Enable → Save**. Chỉ bật mục đầu tiên "Email/Password", không cần bật "Email link". Web không gửi email thật: tên đăng nhập được đổi thành một email giả dạng `ten@ranhchua.app` nên **không có tính năng quên mật khẩu qua email**.
+3. Vào tab **Rules** của Realtime Database, xoá nội dung cũ, **dán toàn bộ nội dung file `database.rules.json`**, bấm **Publish**. (Nếu trước đây bạn đã dán luật cũ, kể cả bản tài khoản đầu tiên, **hãy dán lại bản mới**: bản này thêm mục `names` để giữ tên duy nhất cho cả đăng nhập Google.)
+4. **Bật đăng nhập bằng tài khoản (bắt buộc):** menu trái **Build → Authentication → Get started → Sign-in method**.
+   - Bật **Email/Password** (chỉ mục đầu tiên, không cần "Email link") → Save. Web không gửi email thật: tên đăng nhập được đổi thành email giả dạng `ten@ranhchua.app`, nên **không có quên mật khẩu qua email**.
+   - Bật **Google** (khuyên dùng, để người dùng khỏi lo quên mật khẩu) → chọn email hỗ trợ dự án → Save.
+   - Vào **Authentication → Settings → Authorized domains → Add domain**, thêm domain GitHub Pages của bạn (ví dụ `gittothanhdat.github.io`, chỉ phần tên miền, không có `https://` hay đường dẫn). Thiếu bước này nút Google báo `auth/unauthorized-domain` trên web thật (`localhost` có sẵn).
 5. Lấy cấu hình: bấm bánh răng cạnh "Project Overview" → **Project settings** → cuộn xuống **Your apps** → bấm biểu tượng web **`</>`** → đặt nickname (không cần tích Firebase Hosting) → **Register app**. Bạn sẽ thấy đoạn `const firebaseConfig = { ... }`.
 6. Mở `js/config.js`, thay `null` bằng đoạn đó, ví dụ:
 
@@ -67,12 +70,20 @@ Khi cần sửa web sau này: sửa file rồi upload lại lên repo, đợi 1�
 
 ## 4. Dùng với bạn bè
 
-1. Mở link web → **Tạo tài khoản**: nhập **tên hiển thị** + **mật khẩu (từ 6 ký tự)**. Tên là duy nhất: không phân biệt hoa/thường, dấu, khoảng trắng (`Nguyễn An` và `nguyen an` là một), nên không ai trùng tên ai. Lần sau chỉ cần **Đăng nhập** bằng đúng tên + mật khẩu, trên máy nào cũng được.
+1. Mở link web, có hai cách vào:
+   - **Tiếp tục với Google**: lần đầu bạn chỉ cần đặt một **tên hiển thị** (+ biểu tượng, màu). Bạn bè chỉ thấy tên này, không thấy email Google.
+   - **Tạo tài khoản** bằng **tên** + **mật khẩu (từ 6 ký tự)**. Lần sau **Đăng nhập** bằng đúng tên + mật khẩu.
+   
+   Tên luôn là duy nhất cho cả hai cách: không phân biệt hoa/thường, dấu, khoảng trắng (`Nguyễn An` và `nguyen an` là một), nên không ai trùng tên ai.
+   - **Ghi nhớ đăng nhập:** ô "Ghi nhớ đăng nhập trên máy này" mặc định bật; lần sau mở lại web bằng cùng trình duyệt trên cùng máy sẽ tự vào, không phải đăng nhập lại. Bỏ tích ô này trên máy dùng chung: đóng tab là phải đăng nhập lại. Bấm **Đăng xuất** (avatar → Tài khoản) để xoá phiên đăng nhập.
 2. Sau khi đăng nhập bạn thấy **danh sách phòng riêng của bạn** (chỉ bạn thấy). Phòng bạn tạo hoặc đã tham gia luôn nằm ở đây, nên **không bao giờ "mất" phòng** dù quên link. Phòng mở gần đây nhất nằm trên cùng.
 3. **Tạo phòng mới** → đặt tên phòng → bạn là **chủ phòng**. Link mời lấy ở tên phòng (góc trên trái) hoặc ở Cài đặt → Mời bạn; có thể copy lại bất cứ lúc nào.
 4. Bạn bè mở link (dạng `.../#r=mã-phòng`) → đăng nhập hoặc tạo tài khoản → tự vào phòng. Cũng có thể dán link hoặc mã phòng vào ô "Dán link mời hoặc mã phòng" ở màn hình danh sách phòng.
 5. **Quyền chủ phòng:** xoá (mời ra) bất kỳ thành viên nào, đổi tên phòng, **khoá phòng** (không cho người mới vào), chuyển quyền chủ cho thành viên khác, xoá phòng. **Thành viên** có nút **Rời phòng** (Cài đặt → Quản lý phòng); phòng biến mất khỏi danh sách của họ.
-6. Đổi mật khẩu, đổi tên hiển thị, biểu tượng, màu: bấm vào avatar → **Tài khoản**.
+6. **Tài khoản của tôi** (bấm vào avatar): đổi biểu tượng, màu, **cách đăng nhập**:
+   - Người đã có tài khoản tên + mật khẩu bấm **Liên kết Google** để sau này đăng nhập bằng Google cũng vào **đúng tài khoản cũ** (giữ nguyên phòng, lịch, tin nhắn). Muốn bỏ thì **Huỷ liên kết** (cần còn một cách đăng nhập khác).
+   - Người vào bằng Google bấm **Đặt mật khẩu** để cũng đăng nhập được bằng tên + mật khẩu.
+   - Một email Google chỉ gắn được với một tài khoản. Nếu bạn đã đăng nhập Google và tạo một tài khoản riêng trước đó, hai tài khoản này là hai người khác nhau trên web (không tự gộp).
 
 ### Xem thử bằng dữ liệu mẫu
 
@@ -103,6 +114,8 @@ Câu lệnh mặc định lấy ngày hôm nay từ đồng hồ máy bạn đ�
 - **Bảo mật vẫn ở mức "nhóm bạn thân"**: phòng không hiện công khai, nhưng ai biết mã phòng thì vào được. Nhóm chat nhỏ bị hạn chế đọc bởi luật, song đừng ghi thông tin nhạy cảm (mật khẩu, số thẻ...) vào chat hay tên sự kiện. Người bị chủ phòng mời ra vẫn có thể vào lại bằng link, trừ khi phòng đã **khoá**.
 - Hạn mức Spark: 1 GB lưu trữ, 10 GB tải/tháng, 100 kết nối cùng lúc. Một nhóm vài chục người dùng thoải mái.
 - Dữ liệu nền/ảnh nền chỉ lưu trên máy mỗi người, không đồng bộ.
+- **Đăng nhập Google trên điện thoại:** web dùng cửa sổ popup; nếu trình duyệt chặn thì tự chuyển sang kiểu chuyển trang, nhưng kiểu này đôi khi hỏng trên Safari/iPhone do trình duyệt chặn lưu trữ bên thứ ba. Gặp vậy hãy cho phép popup, hoặc dùng tên + mật khẩu.
+- Chế độ thử (chưa nối Firebase) **không có Google thật**: nút Google hỏi một email bất kỳ để giả lập.
 - Phòng tạo bằng bản PIN cũ **không dùng được** với bản tài khoản (cấu trúc dữ liệu khác); hãy tạo phòng mới. Có thể xoá dữ liệu cũ trong Realtime Database → Data.
 
 ## 7. Gặp lỗi?
@@ -111,7 +124,9 @@ Câu lệnh mặc định lấy ngày hôm nay từ đồng hồ máy bạn đ�
 |---|---|
 | Dải vàng "chế độ thử" vẫn hiện | `js/config.js` chưa dán cấu hình, hoặc thiếu `databaseURL` |
 | "Permission denied" trong Console (F12) | Chưa Publish luật ở bước 2.3 (phải là bản mới), hoặc dán thiếu |
-| Đăng ký/đăng nhập báo lỗi `operation-not-allowed` hoặc `configuration-not-found` | Chưa bật Email/Password ở bước 2.4 |
+| Đăng ký/đăng nhập báo lỗi `operation-not-allowed` hoặc `configuration-not-found` | Chưa bật Email/Password hoặc Google ở bước 2.4 |
+| Nút Google báo `unauthorized-domain` | Chưa thêm domain web vào Authorized domains (bước 2.4) |
+| Google báo "Chưa cập nhật Rules" / Permission denied khi đặt tên | Rules chưa là bản mới có mục `names` (bước 2.3) |
 | Đăng nhập báo sai mật khẩu dù chắc chắn đúng | Tên bị trùng sau khi bỏ dấu/hoa thường với tài khoản khác; thử đúng tên đã đăng ký |
 | Không tìm thấy phòng | Phòng tạo ở chế độ thử không tồn tại trên Firebase; tạo lại sau khi nối Firebase |
 | Sửa code rồi web không đổi | Đợi 1–2 phút rồi tải lại bằng Ctrl+F5 |

@@ -86,6 +86,8 @@
     var acc = await ensureAcc(u, pw);
     var pu = {}; pu['users/' + acc.uid + '/name'] = u.name; pu['users/' + acc.uid + '/emoji'] = u.emoji; pu['users/' + acc.uid + '/color'] = u.color;   // update từng trường để không xoá danh sách phòng riêng
     await store.update(pu);
+    var nk = Store.slug(u.name), cur = await store.get('names/' + nk).catch(function () { return null; });   // sổ tên duy nhất
+    if (!cur) await store.set('names/' + nk, acc.uid).catch(function () { });
     return acc.uid;
   }
   function member(u, now) { return { name: u.name, emoji: u.emoji, color: u.color, joinedAt: now, showLb: true }; }

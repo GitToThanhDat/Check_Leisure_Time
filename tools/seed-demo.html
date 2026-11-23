@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tạo dữ liệu mẫu - Rảnh Chưa?</title>
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  body { overflow: auto; background: linear-gradient(135deg, #eef1ff, #dcd4ff); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 60px; }
+  pre#log { white-space: pre-wrap; font-size: .85rem; background: rgba(255,255,255,.7); border-radius: 12px; padding: 12px; min-height: 120px; border: 1px solid var(--line); }
+  .ok { color: #137a50; } .bad { color: #c0264a; }
+</style>
+</head>
+<body>
+<div id="toast-root"></div><div id="modal-root"></div>
+<div class="wrap">
+  <div class="card glass">
+    <h2>Tạo dữ liệu mẫu</h2>
+    <p class="muted">Trang này tạo sẵn phòng <b>Ổ Rắn Độc A1</b> (chủ phòng là tài khoản <b>Demo</b>) cùng 3 thành viên <b>AI Test 1</b>, <b>AI Test 2</b>, <b>AI Test 3</b>, có lịch rảnh/bận của <b>tuần này</b>, vài tin nhắn có @tag, biệt danh và một kèo hẹn, để mọi người xem thử cách chọn giờ.</p>
+    <p class="muted sm">Cần cấu hình Firebase thật trong <code>js/config.js</code> (nếu để trống, trang chạy ở chế độ thử trên trình duyệt này). Chạy lại nhiều lần được: dữ liệu mẫu sẽ được ghi đè và dời về tuần hiện tại.</p>
+    <label class="fld"><span>Mật khẩu cho 4 tài khoản mẫu (từ 6 ký tự, bạn tự đặt, không lưu vào mã nguồn)</span>
+      <input id="pw" class="inp" type="password" autocomplete="new-password" placeholder="Mật khẩu"></label>
+    <div class="row wrap">
+      <button id="go" class="btn primary">Tạo / làm mới dữ liệu mẫu</button>
+      <button id="del" class="btn danger">Xoá phòng mẫu</button>
+    </div>
+    <pre id="log" class="mt"></pre>
+    <p id="res" class="mt"></p>
+  </div>
+</div>
+<script src="../js/config.js"></script>
+<script src="../js/schedule.js"></script>
+<script src="../js/util.js"></script>
+<script src="../js/store.js"></script>
+<script>
+(function () {
+  'use strict';
+  var ROOM = 'orandoca1', ROOM_NAME = 'Ổ Rắn Độc A1';
+  var USERS = [
+    { name: 'Demo', emoji: '🐍', color: '#8b7cff' },
+    { name: 'AI Test 1', emoji: '🦊', color: '#ffa45c', nick: 'Rắn Hổ Mang' },
+    { name: 'AI Test 2', emoji: '🐼', color: '#4fd6c4', nick: 'Rắn Lục' },
+    { name: 'AI Test 3', emoji: '🐸', color: '#ff7ccf', nick: 'Rắn Ri Voi' }
+  ];
+  var logEl = document.getElementById('log'), store;
+  function log(t, cls) { var s = document.createElement('span'); if (cls) s.className = cls; s.textContent = t + '\n'; logEl.appendChild(s); }
+  function T(h, m) { return h * 60 + (m || 0); }
+  function rec(days, s, e, st, lb) { var d = 0; days.forEach(function (i) { d |= 1 << i; }); return { d: d, s: s, e: e, st: st, lb: lb || '' }; }
+  var ALL = [0, 1, 2, 3, 4, 5, 6], WK = [0, 1, 2, 3, 4], WE = [5, 6];
+
+  /** Lịch mẫu của từng người, ngày tính theo tuần hiện tại (W = thứ hai tuần này) */
+  function schedules(W) {
+    function d(i) { return Sched.addDays(W, i); }
+    function one(map, i, s, e, st, lb) { var k = d(i), o = (map[k] = map[k] || {}); o['x' + Object.keys(o).length + i] = { s: s, e: e, st: st, lb: lb || '' }; }
+    var S = [{ rec: {}, one: {} }, { rec: {}, one: {} }, { rec: {}, one: {} }, { rec: {}, one: {} }];
+    // Demo (chủ phòng)
+    S[0].rec.r1 = rec(ALL, T(23), T(7), 'busy', 'Ngủ'); S[0].rec.r2 = rec(WK, T(8), T(11, 30), 'busy', 'Đi học');
+    one(S[0].one, 1, T(19, 30), T(22), 'free', 'Rảnh tối'); one(S[0].one, 2, T(14), T(16), 'busy', 'Họp nhóm');
+    one(S[0].one, 4, T(18, 30), T(23), 'free', 'Rảnh tối'); one(S[0].one, 5, T(9), T(22), 'free', ''); one(S[0].one, 6, T(10), T(18), 'maybe', 'Chưa chắc');
+    // AI Test 1 (sinh viên)
+    S[1].rec.r1 = rec(ALL, T(23, 30), T(7, 30), 'busy', 'Ngủ'); S[1].rec.r2 = rec([0, 2, 4], T(7, 30), T(11, 45), 'busy', 'Học ở trường'); S[1].rec.r3 = rec([1, 3], T(13), T(17), 'busy', 'Học ở trường');
+    one(S[1].one, 1, T(19), T(21), 'maybe', 'Có thể đi'); one(S[1].one, 2, T(10), T(12), 'busy', 'Thuyết trình');
+    one(S[1].one, 4, T(18), T(23), 'free', 'Rảnh tối'); one(S[1].one, 5, T(8), T(13), 'busy', 'Làm thêm'); one(S[1].one, 5, T(13), T(22), 'free', '');
+    one(S[1].one, 6, T(8), T(12), 'busy', 'Ôn thi'); one(S[1].one, 6, T(14), T(20), 'free', '');
+    // AI Test 2 (đi làm)
+    S[2].rec.r1 = rec(ALL, T(0), T(8), 'busy', 'Ngủ'); S[2].rec.r2 = rec(WK, T(9), T(17, 30), 'busy', 'Đi làm'); S[2].rec.r3 = rec(WE, T(9), T(22), 'free', 'Rảnh cuối tuần');
+    one(S[2].one, 2, T(17, 30), T(21), 'busy', 'Tăng ca'); one(S[2].one, 4, T(19), T(22, 30), 'free', 'Sau giờ làm');
+    // AI Test 3 (học tiếng Anh + gym)
+    S[3].rec.r1 = rec(ALL, T(22, 30), T(6, 30), 'busy', 'Ngủ'); S[3].rec.r2 = rec([1, 3], T(18, 30), T(20, 30), 'busy', 'Lớp tiếng Anh'); S[3].rec.r3 = rec([0, 2, 4], T(17, 30), T(19), 'busy', 'Tập gym');
+    one(S[3].one, 4, T(19), T(22, 30), 'free', 'Rảnh tối'); one(S[3].one, 5, T(9), T(12), 'busy', 'Họp CLB'); one(S[3].one, 5, T(14), T(20), 'maybe', 'Có thể đi');
+    one(S[3].one, 6, T(6), T(15), 'busy', 'Về quê'); one(S[3].one, 6, T(15), T(21), 'free', '');
+    return S;
+  }
+
+  async function ensureAcc(u, pw) {
+    var a = store.auth;
+    try { return await a.signUp(u.name, pw); }
+    catch (e) {
+      if (e.code !== 'auth/email-already-in-use') throw e;
+      try { return await a.signIn(u.name, pw); } catch (e2) { throw new Error('Tài khoản "' + u.name + '" đã tồn tại với mật khẩu khác. Hãy nhập đúng mật khẩu đã dùng lần đầu.'); }
+    }
+  }
+  async function asUser(u, pw) {
+    if (store.auth.user()) await store.auth.signOut();
+    var acc = await ensureAcc(u, pw);
+    var pu = {}; pu['users/' + acc.uid + '/name'] = u.name; pu['users/' + acc.uid + '/emoji'] = u.emoji; pu['users/' + acc.uid + '/color'] = u.color;   // update từng trường để không xoá danh sách phòng riêng
+    await store.update(pu);
+    return acc.uid;
+  }
+  function member(u, now) { return { name: u.name, emoji: u.emoji, color: u.color, joinedAt: now, showLb: true }; }
+
+  async function run(pw) {
+    var now = store.now(), W = Sched.startOfWeek(Sched.toDateStr(new Date())), SC = schedules(W), uids = [];
+    log('Tuần này bắt đầu từ thứ hai ' + W);
+    // 1) Demo tạo phòng
+    var demo = await asUser(USERS[0], pw); uids[0] = demo; log('✓ Tài khoản Demo', 'ok');
+    var meta = await store.get('rooms/' + ROOM + '/meta');
+    if (meta && meta.owner !== demo) throw new Error('Mã phòng "' + ROOM + '" đã có người khác dùng.');
+    if (!meta) await store.set('rooms/' + ROOM + '/meta', { name: ROOM_NAME, createdAt: now, owner: demo });
+    var up = {}; up['rooms/' + ROOM + '/members/' + demo] = member(USERS[0], now); up['users/' + demo + '/rooms/' + ROOM] = { name: ROOM_NAME, ts: now };
+    if (!meta) up['rooms/' + ROOM + '/channels/general'] = { title: 'Cả phòng', kind: 'room', ts: now, by: demo };
+    await store.update(up);
+    await store.set('rooms/' + ROOM + '/sched/' + demo, SC[0]); log('✓ Tạo phòng "' + ROOM_NAME + '" và lịch của Demo', 'ok');
+    // 2) ba tài khoản AI Test vào phòng
+    var chat = [
+      [1, 'Cuối tuần này ai rảnh đi cà phê không? 🍜'],
+      [2, 'Mình rảnh tối thứ 6 và cả cuối tuần nè'],
+    ];
+    for (var i = 1; i <= 3; i++) {
+      var uid = await asUser(USERS[i], pw); uids[i] = uid;
+      var u2 = {}; u2['rooms/' + ROOM + '/members/' + uid] = member(USERS[i], now + i); u2['users/' + uid + '/rooms/' + ROOM] = { name: ROOM_NAME, ts: now + i };
+      await store.update(u2);
+      await store.set('rooms/' + ROOM + '/sched/' + uid, SC[i]);
+      log('✓ ' + USERS[i].name + ' vào phòng và đánh dấu lịch', 'ok');
+      if (i === 1 || i === 2) {
+        var m = chat[i - 1][1], k = 'seed_' + i, c = {}; c['rooms/' + ROOM + '/chats/general/' + k] = { by: uid, txt: m, ts: now + 1000 * i, mn: [] }; c['rooms/' + ROOM + '/channels/general/last'] = { by: uid, txt: m, ts: now + 1000 * i };
+        await store.update(c);
+      }
+    }
+    // AI Test 3 nhắn có @tag Demo
+    var u3 = uids[3], t3 = 'Demo ơi, tối thứ 6 mình thấy cả nhóm rảnh đó, @{' + demo + '} chốt giờ giúp tụi mình nha!';
+    var c3 = {}; c3['rooms/' + ROOM + '/chats/general/seed_3'] = { by: u3, txt: t3, ts: now + 3000, mn: [demo] }; c3['rooms/' + ROOM + '/channels/general/last'] = { by: u3, txt: t3, ts: now + 3000 };
+    c3['rooms/' + ROOM + '/notifs/' + demo + '/seed_n1'] = { by: u3, ts: now + 3000, t: 'mention', ch: 'general', txt: 'Demo ơi, tối thứ 6 mình thấy cả nhóm rảnh đó, @Demo chốt giờ giúp tụi mình nha!' };
+    await store.update(c3); log('✓ Tin nhắn mẫu có @tag', 'ok');
+    // 3) Demo quay lại: biệt danh, kèo hẹn tối thứ 6
+    await asUser(USERS[0], pw);
+    var nk = {}; for (i = 1; i <= 3; i++) nk[uids[i]] = USERS[i].nick;
+    await store.set('rooms/' + ROOM + '/channels/general/nick', nk);
+    var fri = Sched.addDays(W, 4), mem = {}, rs = { }; uids.forEach(function (x) { mem[x] = true; });
+    rs[uids[0]] = 'yes'; rs[uids[1]] = 'yes'; rs[uids[2]] = 'maybe'; rs[uids[3]] = 'yes';
+    var first = 'Mình rủ mọi người "Cà phê tối thứ 6" nha. Ai đi được bấm Tham gia ở trên giúp mình!';
+    var plan = { title: 'Cà phê tối thứ 6', kind: 'plan', members: mem, by: demo, ts: now + 4000, rsvp: rs, plan: { date: fri, s: T(19), e: T(21), place: 'Cà phê Rắn Độc, Quận 1', note: 'Cả 4 người đều rảnh khung giờ này' }, last: { by: demo, txt: first, ts: now + 4000 } };
+    var p = {}; p['rooms/' + ROOM + '/channels/plan_seed'] = plan; p['rooms/' + ROOM + '/chats/plan_seed/seed_p1'] = { by: demo, txt: first, ts: now + 4000, mn: [] };
+    for (i = 1; i <= 3; i++) p['rooms/' + ROOM + '/notifs/' + uids[i] + '/seed_inv'] = { by: demo, ts: now + 4000, t: 'invite', ch: 'plan_seed', txt: plan.plan.date + ' 19:00–21:00 · Cà phê Rắn Độc, Quận 1' };
+    await store.update(p); log('✓ Biệt danh và kèo hẹn tối thứ 6 (' + fri + ')', 'ok');
+    await store.auth.signOut();
+    return location.href.replace(/tools\/seed-demo\.html.*$/, '') + '#r=' + ROOM;
+  }
+  async function wipe(pw) {
+    await asUser(USERS[0], pw);
+    await store.set('rooms/' + ROOM, null); await store.set('users/' + store.auth.user().uid + '/rooms/' + ROOM, null);
+    await store.auth.signOut(); log('✓ Đã xoá phòng mẫu (4 tài khoản vẫn còn; phòng sẽ tự biến mất khỏi danh sách của họ)', 'ok');
+  }
+
+  function wrap(fn) {
+    return async function () {
+      var pw = document.getElementById('pw').value; document.getElementById('res').textContent = '';
+      if (pw.length < 6) { log('Mật khẩu cần ít nhất 6 ký tự', 'bad'); return; }
+      var b = document.querySelectorAll('button'); b.forEach(function (x) { x.disabled = true; });
+      try { var link = await fn(pw); if (link) { var el = document.getElementById('res'); el.innerHTML = 'Xong! Đăng nhập tên <b>Demo</b> (hoặc <b>AI Test 1/2/3</b>) với mật khẩu bạn vừa nhập, rồi vào phòng bằng link: '; var a = document.createElement('a'); a.href = link; a.textContent = link; a.target = '_blank'; el.appendChild(a); } }
+      catch (e) { console.error(e); log('✗ ' + (Store.authMsg ? Store.authMsg(e) : e.message) + (e.code ? ' [' + e.code + ']' : ''), 'bad'); }
+      b.forEach(function (x) { x.disabled = false; });
+    };
+  }
+  Store.create(window.FIREBASE_CONFIG).then(function (s) {
+    store = s; log(s.mode === 'firebase' ? 'Đã nối Firebase.' : 'Chưa cấu hình Firebase: đang chạy chế độ thử (trình duyệt này).');
+    document.getElementById('go').onclick = wrap(run); document.getElementById('del').onclick = wrap(function (pw) { return wipe(pw).then(function () { return null; }); });
+  }, function (e) { log('✗ Không nối được Firebase: ' + e.message, 'bad'); });
+})();
+</script>
+</body>
+</html>

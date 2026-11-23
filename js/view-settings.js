@@ -7,10 +7,11 @@
   function sec(title, desc, body) { return h('section.card.glass.st-sec', h('h3', title), desc ? h('p.muted.sm', desc) : null, body); }
   function apply() { A.savePf(); A.applyTheme(); }
 
+  S.q = '';
   S.render = function (el) {
     S.el = el; S.draw();
   };
-  S.update = function (k) { if (k.members && !S.busy) S.draw(); };
+  S.update = function (k) { if ((k.members || k.meta) && !S.busy) S.draw(); };
   S.draw = function () {
     var el = U.clear(S.el), me = A.me;
     el.appendChild(h('div.settings', profile(me), look(), notif(), importCard(), room()));
@@ -18,39 +19,12 @@
 
   /* ---- Hồ sơ ---- */
   function profile(me) {
-    var emo = h('div.pick'), col = h('div.pick');
-    function draw() {
-      U.clear(emo); U.clear(col);
-      U.EMOJIS.forEach(function (e) { emo.appendChild(h('button.pk' + (A.me.emoji === e ? '.on' : ''), { onclick: function () { saveMember({ emoji: e }); } }, e)); });
-      U.COLORS.forEach(function (c) { col.appendChild(h('button.pk.sw' + (A.me.color === c ? '.on' : ''), { style: { background: c }, onclick: function () { saveMember({ color: c }); } })); });
-    }
-    draw();
-    return sec('Hồ sơ của tôi', null, h('div',
-      h('div.row.prof', U.avatar(me, 56), h('div', h('b', me.name), h('div.muted.sm', A.isOwner() ? 'Chủ phòng' : 'Thành viên')),
-        h('button.btn.sm', { onclick: rename }, U.icon('edit', 16), 'Đổi tên')),
-      h('div.fld.mt', h('span', 'Biểu tượng'), emo), h('div.fld', h('span', 'Màu'), col),
-      h('label.chk', h('input', { type: 'checkbox', checked: me.showLb !== false, onchange: function (e) { saveMember({ showLb: e.target.checked }); } }), h('span', 'Cho bạn bè xem tên việc/thói quen của tôi (nếu tắt, họ chỉ thấy Rảnh/Bận)')),
-      h('div.row', h('button.btn.sm', { onclick: changePin }, 'Đổi mã PIN'))));
-  }
-  function rename() {
-    U.prompt('Đổi tên', 'Tên hiển thị mới', A.me.name, { max: 24 }).then(function (v) {
-      if (!v || v === A.me.name) return;
-      if (A.memberList().some(function (m) { return m.id !== A.me.id && U.norm(m.name) === U.norm(v); })) { U.toast('Đã có người dùng tên này trong phòng', { kind: 'err' }); return; }
-      saveMember({ name: v });
-    });
-  }
-  function changePin() {
-    var cur = h('input.inp', { type: 'password', inputMode: 'numeric', maxLength: 6, placeholder: 'PIN hiện tại' }), n1 = h('input.inp', { type: 'password', inputMode: 'numeric', maxLength: 6, placeholder: 'PIN mới (4–6 số)' });
-    var m = U.modal({
-      title: 'Đổi mã PIN', body: h('div.form', h('div.fld', cur), h('div.fld', n1)),
-      actions: [h('button.btn.ghost', { onclick: function () { m.close(); } }, 'Huỷ'), h('button.btn.primary', { onclick: go }, 'Đổi PIN')]
-    });
-    async function go() {
-      if (!/^\d{4,6}$/.test(n1.value)) { U.toast('PIN mới phải gồm 4–6 chữ số', { kind: 'err' }); return; }
-      if ((await U.pinHash(A.room.id, A.me.id, cur.value)) !== A.me.ph) { U.toast('PIN hiện tại chưa đúng', { kind: 'err' }); return; }
-      var ph = await U.pinHash(A.room.id, A.me.id, n1.value); await saveMember({ ph: ph });
-      A.sess.rooms.forEach(function (r) { if (r.id === A.room.id) r.ph = ph; }); A.saveSess(); m.close(); U.toast('Đã đổi PIN');
-    }
+    return sec('Tài khoản của tôi', null, h('div',
+      h('div.row.prof', U.avatar(me, 56), h('div', h('b', me.name), h('div.muted.sm', A.isOwner() ? 'Chủ phòng này' : 'Thành viên')),
+        h('button.btn.sm', { onclick: A.accountModal }, U.icon('edit', 16), 'Biểu tượng, màu, mật khẩu')),
+      h('label.chk.mt', h('input', { type: 'checkbox', checked: me.showLb !== false, onchange: function (e) { saveMember({ showLb: e.target.checked }); } }), h('span', 'Cho bạn bè trong phòng này xem tên việc/thói quen của tôi (nếu tắt, họ chỉ thấy Rảnh/Bận)')),
+      h('div.row', h('button.btn', { onclick: A.exitRoom }, U.icon('home', 16), 'Danh sách phòng của tôi'),
+        h('button.btn.ghost', { onclick: function () { U.confirm('Đăng xuất?', 'Bạn sẽ cần nhập lại tên và mật khẩu để vào lại. Dữ liệu của bạn vẫn được giữ.', 'Đăng xuất').then(function (ok) { if (ok) A.logout(); }); } }, U.icon('logout', 16), 'Đăng xuất'))));
   }
 
   /* ---- Giao diện ---- */
@@ -95,32 +69,37 @@
 
   /* ---- Phòng ---- */
   function room() {
-    var link = A.inviteLink(), owner = A.isOwner();
-    var list = A.memberList().map(function (m) {
-      return h('div.mrow', U.avatar(m, 34), h('div.mi-n', h('b', m.name), m.id === A.room.meta.owner ? h('span.tag', 'chủ phòng') : null, m.id === A.me.id ? h('span.muted.sm', ' (bạn)') : null),
-        owner && m.id !== A.me.id ? h('div.row', h('button.btn.sm.ghost', { onclick: function () { resetPin(m); } }, 'Đặt lại PIN'), h('button.btn.sm.ghost.dng', { onclick: function () { kick(m); } }, 'Xoá')) : null);
-    });
-    return sec('Phòng "' + A.room.meta.name + '"', null, h('div',
+    var link = A.inviteLink(), owner = A.isOwner(), meta = A.room.meta, all = A.memberList();
+    var q = h('input.inp.sm', { placeholder: 'Tìm thành viên…', value: S.q, oninput: function (e) { S.q = U.norm(e.target.value); drawList(); } });
+    var listEl = h('div.mlist.scroll-box');
+    function drawList() {
+      U.clear(listEl);
+      var v = all.filter(function (m) { return !S.q || U.norm(m.name).indexOf(S.q) >= 0; });
+      v.forEach(function (m) {
+        listEl.appendChild(h('div.mrow', U.avatar(m, 34), h('div.mi-n', h('b', m.name), m.id === meta.owner ? h('span.tag', 'chủ phòng') : null, m.id === A.me.id ? h('span.muted.sm', ' (bạn)') : null),
+          owner && m.id !== A.me.id ? h('div.row', h('button.btn.sm.ghost', { title: 'Giao quyền chủ phòng cho người này', onclick: function () { A.setOwner(m); } }, U.icon('crown', 16)),
+            h('button.btn.sm.ghost.dng', { onclick: function () { A.kickMember(m); } }, U.icon('trash', 16), 'Xoá')) : null));
+      });
+      if (!v.length) listEl.appendChild(h('p.muted.sm', 'Không có ai khớp.'));
+    }
+    drawList();
+    var ownerTools = owner ? h('div.fld', h('span', 'Đặc quyền chủ phòng'),
+      h('div.row.wrap',
+        h('button.btn.sm', { onclick: renameRoom }, U.icon('edit', 16), 'Đổi tên phòng'),
+        h('button.btn.sm', { onclick: function () { A.store.set(A.path('meta/locked'), meta.locked ? null : true).then(function () { U.toast(meta.locked ? 'Đã mở lại phòng' : 'Đã khoá phòng: không nhận thêm người'); }, function (e) { U.toast('Lỗi: ' + (e.message || e), { kind: 'err' }); }); } }, U.icon('lock', 16), meta.locked ? 'Mở khoá phòng' : 'Khoá phòng (ngừng nhận người mới)'))) : null;
+    return sec('Phòng "' + meta.name + '"', null, h('div',
       h('div.fld', h('span', 'Link mời bạn bè'), h('div.row', h('input.inp', { value: link, readOnly: true, onfocus: function (e) { e.target.select(); } }), h('button.btn', { onclick: function () { U.copy(link).then(function () { U.toast('Đã copy link mời'); }); } }, U.icon('copy', 16), 'Copy'))),
-      h('p.muted.sm', 'Mã phòng: ', h('b', A.room.id), '. Ai có link/mã đều vào được phòng, chỉ gửi cho người bạn tin.'),
-      h('h4.mt', 'Thành viên (' + list.length + ')'), h('div.mlist', list),
-      h('div.row.mt', h('button.btn', { onclick: function () { U.confirm('Đăng xuất khỏi phòng này?', 'Bạn sẽ cần chọn lại tên và nhập PIN để vào lại. Lịch của bạn vẫn được giữ.', 'Đăng xuất').then(function (ok) { if (ok) A.logout(); }); } }, U.icon('logout', 16), 'Đăng xuất'),
-        owner ? h('button.btn.danger', { onclick: delRoom }, U.icon('trash', 16), 'Xoá phòng') : null)));
+      h('p.muted.sm', 'Mã phòng: ', h('b', A.room.id), '. Người có link phải đăng nhập (tên không trùng) mới vào được.', meta.locked ? ' Phòng đang khoá.' : ''),
+      ownerTools,
+      h('h4.mt', 'Thành viên (' + all.length + ')'), all.length > 6 ? q : null, listEl,
+      h('div.row.mt.wrap',
+        owner ? h('button.btn', { onclick: A.leaveRoom }, U.icon('logout', 16), 'Giao quyền & rời phòng') : h('button.btn', { onclick: A.leaveRoom }, U.icon('logout', 16), 'Rời phòng'),
+        owner ? h('button.btn.danger', { onclick: A.deleteRoom }, U.icon('trash', 16), 'Xoá phòng') : null)));
   }
-  function resetPin(m) {
-    U.prompt('Đặt lại PIN cho ' + m.name, 'PIN mới (4–6 số) — hãy nhắn cho bạn ấy', '', { inputMode: 'numeric', max: 6, ok: 'Đặt lại' }).then(async function (v) {
-      if (v == null) return; if (!/^\d{4,6}$/.test(v)) { U.toast('PIN phải gồm 4–6 chữ số', { kind: 'err' }); return; }
-      await A.store.set(A.path('members/' + m.id + '/ph'), await U.pinHash(A.room.id, m.id, v)); U.toast('Đã đặt lại PIN cho ' + m.name);
-    });
-  }
-  function kick(m) {
-    U.confirm('Xoá ' + m.name + ' khỏi phòng?', 'Lịch và thông báo của bạn ấy sẽ bị xoá.', 'Xoá', true).then(function (ok) {
-      if (!ok) return; var o = {}; o[A.path('members/' + m.id)] = null; o[A.path('sched/' + m.id)] = null; o[A.path('notifs/' + m.id)] = null; A.store.update(o);
-    });
-  }
-  function delRoom() {
-    U.confirm('Xoá cả phòng?', 'Toàn bộ lịch, tin nhắn và thành viên sẽ bị xoá vĩnh viễn, không khôi phục được.', 'Xoá phòng', true).then(function (ok) {
-      if (!ok) return; var id = A.room.id; A.store.set('rooms/' + id, null).then(function () { A.logout(); });
+  function renameRoom() {
+    U.prompt('Đổi tên phòng', 'Tên phòng mới', A.room.meta.name, { max: 40 }).then(function (v) {
+      if (!v || v === A.room.meta.name) return;
+      A.store.set(A.path('meta/name'), v).then(function () { U.toast('Đã đổi tên phòng'); }, function (e) { U.toast('Lỗi: ' + (e.message || e), { kind: 'err' }); });
     });
   }
 

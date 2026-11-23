@@ -69,3 +69,13 @@ t('parseImport: lỗi', () => {
   const r = S.parseImport('{"events":[{"date":"xx","start":"1","end":"2"}]}'); assert.ok(!r.ok); assert.ok(r.warnings.length);
 });
 console.log(n + ' tests passed');
+
+t('parseImport: ngày dd/mm không năm -> năm gần ref nhất', () => {
+  const j = '{"events":[{"date":"05/01","start":"09:00","end":"10:00"},{"date":"25/11","start":"09:00","end":"10:00"},{"date":"12/12/26","start":"1:00","end":"2:00"}]}';
+  const r = S.parseImport(j, { ref: '2026-11-23' });
+  assert.deepEqual(Object.keys(r.one).sort(), ['2026-11-25', '2026-12-12', '2027-01-05']);
+  const r2 = S.parseImport(j);   // không ref: dd/mm không năm bị bỏ qua
+  assert.equal(Object.keys(r2.one).length, 1);
+  const r3 = S.parseImport('{"events":[{"date":"20/12","start":"09:00","end":"10:00"}]}', { ref: '2027-01-03' });
+  assert.deepEqual(Object.keys(r3.one), ['2026-12-20']);
+});

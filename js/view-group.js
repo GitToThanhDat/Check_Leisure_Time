@@ -4,12 +4,16 @@
   var h = U.h, $ = U.$, SLOT = Sched.SLOT;
   var ST = { free: 'Rảnh', busy: 'Bận', maybe: 'Có thể', none: 'Chưa đánh dấu' };
   var MODE_NAMES = { strict: 'Chỉ Rảnh', flex: 'Rảnh + Có thể', loose: 'Không bận' };
-  var TOD = [['Cả ngày', 0, 24], ['Sáng', 6, 11], ['Trưa', 11, 14], ['Chiều', 14, 18], ['Tối', 18, 23], ['Khuya', 22, 24]];
-  var DEF = { mode: 'day', off: [], fromH: 6, toH: 24, weekdays: [], minDur: 60, calc: 'flex', need: 0, finderDays: 14, open: false };
+  var TOD = [['Cả ngày', 0, 24], ['Sáng', 6, 11], ['Trưa', 11, 14], ['Chiều', 14, 18], ['Tối', 18, 23], ['Khuya', 22, 24], ['Đêm khuya', 0, 6]];
+  var DEF = { v: 2, mode: 'day', off: [], fromH: 0, toH: 24, weekdays: [], minDur: 60, calc: 'flex', need: 0, finderDays: 14, open: false };
 
   var G = { date: null, f: null, el: null, cache: null };
   function saveF() { U.lsSet('rc_gf_' + A.room.id, G.f); }
-  function loadF() { G.f = Object.assign({}, DEF, U.lsGet('rc_gf_' + A.room.id, {})); }
+  function loadF() {
+    var f = Object.assign({}, DEF, U.lsGet('rc_gf_' + A.room.id, {}));
+    if (!f.v || f.v < 2) { f.v = 2; if (f.fromH === 6 && f.toH === 24) f.fromH = 0; }   // bản cũ mặc định 6h–24h: mở rộng cả ngày
+    G.f = f;
+  }
 
   function selected() { return A.memberList().filter(function (m) { return G.f.off.indexOf(m.id) < 0; }); }
   function dayOf(mid, date) {
@@ -32,6 +36,13 @@
   G.update = function (kinds) { if (kinds.sched || kinds.members) { G.cache = null; G.drawAll(); } };
   G.drawAll = function () { G.cache = null; drawHead(); drawFilters(); drawMain(); drawFinder(); };
 
+  function openJump() {
+    U.pickDate({
+      value: G.date, title: 'Xem nhóm vào ngày…',
+      mark: function (ds) { return selected().some(function (m) { var o = A.sc(m.id).one; return o && o[ds]; }); },
+      onPick: function (ds) { G.date = ds; drawHead(); drawMain(); }
+    });
+  }
   function nav(dir) { G.date = Sched.addDays(G.date, dir * (G.f.mode === 'week' ? 7 : 1)); drawHead(); drawMain(); }
   function drawHead() {
     var el = U.clear(G.head), d = G.date, w = Sched.dow(d), mem = A.memberList().length, sel = selected().length;
@@ -42,7 +53,7 @@
       h('div.row', h('button.icon-btn', { onclick: function () { nav(-1); } }, U.icon('left')),
         h('button.btn.sm', { onclick: function () { G.date = U.today(); drawHead(); drawMain(); } }, 'Hôm nay'),
         h('button.icon-btn', { onclick: function () { nav(1); } }, U.icon('right')),
-        h('label.datepick', h('b.range', label), h('input', { type: 'date', value: d, onchange: function (e) { if (e.target.value) { G.date = e.target.value; drawHead(); drawMain(); } } }))),
+        h('button.datepick', { title: 'Nhảy tới ngày bất kỳ', onclick: openJump }, h('b.range', label), U.icon('cal', 16))),
       h('div.row',
         h('div.seg.sm', [['day', 'Ngày'], ['week', 'Tuần']].map(function (x) {
           return h('button' + (G.f.mode === x[0] ? '.on' : ''), { onclick: function () { G.f.mode = x[0]; saveF(); drawHead(); drawMain(); } }, x[1]);
@@ -55,14 +66,11 @@
   function drawFilters() {
     var el = U.clear(G.filters), f = G.f;
     if (!f.open) { el.style.display = 'none'; return; } el.style.display = '';
-    var ml = A.memberList();
+    var ml = A.memberList(), pSel = {}; ml.forEach(function (m) { if (f.off.indexOf(m.id) < 0) pSel[m.id] = 1; });
+    var picker = U.memberPicker({ list: ml, sel: pSel, onChange: function (sl) { f.off = ml.filter(function (m) { return !sl[m.id]; }).map(function (m) { return m.id; }); saveF(); G.cache = null; drawHead(); drawMain(); drawFinder(); } });
     el.appendChild(h('div.fl-sec', h('div.fl-title', h('b', 'Người'),
-      h('span.row', h('button.btn.sm.ghost', { onclick: function () { f.off = []; chg(); } }, 'Tất cả'),
-        h('button.btn.sm.ghost', { onclick: function () { f.off = ml.filter(function (m) { return m.id !== A.me.id; }).map(function (m) { return m.id; }); chg(); } }, 'Chỉ mình tôi'))),
-      h('div.chips', ml.map(function (m) {
-        var on = f.off.indexOf(m.id) < 0;
-        return h('button.chip.pc' + (on ? '.on' : ''), { onclick: function () { var i = f.off.indexOf(m.id); if (i < 0) f.off.push(m.id); else f.off.splice(i, 1); chg(); } }, U.avatar(m, 20), m.name);
-      }))));
+      h('span.row', h('button.btn.sm.ghost', { onclick: function () { f.off = ml.filter(function (m) { return m.id !== A.me.id; }).map(function (m) { return m.id; }); chg(); } }, 'Chỉ mình tôi'))),
+      picker.el));
     var from = h('select.inp.sm', { onchange: function (e) { f.fromH = +e.target.value; if (f.toH <= f.fromH) f.toH = Math.min(24, f.fromH + 1); chg(); } }),
       to = h('select.inp.sm', { onchange: function (e) { f.toH = +e.target.value; if (f.fromH >= f.toH) f.fromH = Math.max(0, f.toH - 1); chg(); } });
     for (var i = 0; i <= 24; i++) { if (i < 24) from.appendChild(h('option', { value: i, selected: f.fromH === i }, i + ':00')); if (i > 0) to.appendChild(h('option', { value: i, selected: f.toH === i }, i + ':00')); }
@@ -97,7 +105,7 @@
 
   function dayView(sel) {
     var date = G.date, r = slotRange(), n = r[1] - r[0], today = U.today();
-    var grid = h('div.tl', { style: { gridTemplateColumns: '104px repeat(' + n + ', 26px)' } });
+    var grid = h('div.tl', { style: { gridTemplateColumns: '120px repeat(' + n + ', 26px)' } });
     grid.appendChild(h('div.tn.corner'));
     for (var i = r[0]; i < r[1]; i++) {
       if (i % 2 === 0) grid.appendChild(h('div.th', { style: { gridColumn: 'span ' + Math.min(2, r[1] - i) } }, (i / 2) + 'h'));
@@ -122,7 +130,7 @@
     if (date === today) {
       var now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
       if (nm >= r[0] * SLOT && nm < r[1] * SLOT) {
-        var x = 104 + (nm - r[0] * SLOT) / SLOT * 26;
+        var x = 120 + (nm - r[0] * SLOT) / SLOT * 26;
         grid.appendChild(h('div.tl-now', { style: { left: x + 'px' } }));
       }
     }

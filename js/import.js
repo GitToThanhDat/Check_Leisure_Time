@@ -4,39 +4,48 @@
   var h = U.h;
   var DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], ST = { free: 'Rảnh', busy: 'Bận', maybe: 'Có thể' };
 
-  function buildPrompt(slotTable) {
-    var t = new Date(), today = U.fmtDate(U.today(), true) + '/' + t.getFullYear();
-    var slot = slotTable && slotTable.trim()
-      ? 'Lịch của tôi ghi theo tiết/slot. Hãy đổi sang giờ thật bằng bảng sau:\n' + slotTable.trim()
+  var KINDS = [
+    ['auto', 'Tự nhận biết', ''],
+    ['tkb', 'Thời khoá biểu học kỳ', 'Ảnh là thời khoá biểu: các môn lặp lại hằng tuần nên ưu tiên đưa vào "recurring" (kèm from/to nếu ảnh có ghi kỳ học).'],
+    ['work', 'Ca làm / lịch làm việc', 'Ảnh là lịch ca làm việc: ca cố định lặp lại hằng tuần thì vào "recurring", ca ngày cụ thể thì vào "events".'],
+    ['cal', 'Lịch tháng / tuần (Google, Outlook…)', 'Ảnh là lịch theo ngày: mỗi ô là một sự kiện cụ thể nên đưa vào "events" với ngày đầy đủ; chỉ dùng "recurring" cho việc ghi rõ là lặp lại.'],
+    ['note', 'Tin nhắn / ghi chú / danh sách', 'Ảnh là tin nhắn hoặc ghi chú viết tay: hãy suy ra các mốc ngày giờ được nhắc tới.']
+  ];
+  var WD = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+
+  /** o: {ref:'YYYY-MM-DD', kind, free:bool, extra, slots} -- "hôm nay" lấy theo ngày tham chiếu (mặc định đồng hồ máy), không cố định */
+  function buildPrompt(o) {
+    o = o || {}; var ref = o.ref || U.today(), d = Sched.parseDate(ref), kind = KINDS.filter(function (k) { return k[0] === o.kind; })[0] || KINDS[0];
+    var refTxt = WD[d.getDay()] + ', ' + d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear() + ' (' + ref + ')';
+    var ex1 = Sched.addDays(ref, 2), ex2 = Sched.addDays(ref, 84);
+    var slot = o.slots && o.slots.trim()
+      ? 'Lịch của tôi ghi theo tiết/slot. Đổi sang giờ thật bằng bảng sau:\n' + o.slots.trim()
       : 'Nếu lịch ghi theo "tiết/slot" mà tôi không đưa bảng giờ, hãy hỏi lại tôi bảng giờ trước khi trả JSON.';
-    return [
-      'Bạn là trợ lý chuyển ảnh lịch thành dữ liệu. Tôi gửi kèm ảnh chụp lịch của tôi (thời khoá biểu, lịch làm việc, lịch Google/Outlook...). Hãy đọc kỹ ảnh và trả về DUY NHẤT một khối JSON (đặt trong ```json) theo đúng cấu trúc dưới đây.',
+    var L = [
+      'Bạn là trợ lý chuyển ảnh lịch thành dữ liệu. Tôi gửi kèm một hoặc nhiều ảnh chụp lịch của tôi (thời khoá biểu, lịch làm việc, lịch Google/Outlook, tin nhắn hẹn…). Hãy đọc kỹ ảnh và trả về một khối JSON (đặt trong ```json) theo đúng cấu trúc dưới đây.',
       '',
-      'Hôm nay là ' + today + '. Dùng ngày này để suy ra ngày và năm khi ảnh chỉ ghi "Thứ 3", "tuần này", "ngày mai"...',
-      '',
-      'Cấu trúc:',
-      '```json',
-      '{',
-      '  "schema": "ranhchua/v1",',
-      '  "recurring": [',
-      '    {"days": ["mon", "wed"], "start": "07:00", "end": "09:15", "status": "busy", "label": "Mạng máy tính", "from": "2026-09-07", "to": "2026-12-20"}',
-      '  ],',
-      '  "events": [',
-      '    {"date": "2026-11-25", "start": "14:00", "end": "16:00", "status": "busy", "label": "Họp nhóm"}',
-      '  ]',
-      '}',
-      '```',
-      '',
+      'Mốc thời gian: hôm nay là ' + refTxt + '. Dùng ngày này để suy ra ngày và năm khi ảnh chỉ ghi "Thứ 3", "tuần này", "ngày mai", hoặc ngày dạng dd/mm không có năm (lấy năm hợp lý nhất so với mốc này; Việt Nam viết ngày trước, tháng sau).'
+    ];
+    if (kind[2]) L.push('', 'Loại ảnh: ' + kind[2]);
+    L.push('', 'Trạng thái mặc định của các mục: ' + (o.free ? '"free" (ảnh cho biết những lúc tôi RẢNH)' : '"busy" (ảnh cho biết những lúc tôi BẬN)') + ', trừ khi ảnh ghi rõ khác đi.');
+    if (o.extra && o.extra.trim()) L.push('', 'Yêu cầu riêng của tôi (ưu tiên hơn quy tắc mặc định bên dưới, nhưng KHÔNG được đổi cấu trúc JSON):', o.extra.trim());
+    L.push('',
+      'Cấu trúc:', '```json', '{', '  "schema": "ranhchua/v1",', '  "recurring": [',
+      '    {"days": ["mon", "wed"], "start": "07:00", "end": "09:15", "status": "busy", "label": "Mạng máy tính", "from": "' + ref + '", "to": "' + ex2 + '"}',
+      '  ],', '  "events": [',
+      '    {"date": "' + ex1 + '", "start": "14:00", "end": "16:00", "status": "busy", "label": "Họp nhóm"}',
+      '  ]', '}', '```', '',
       'Quy tắc:',
-      '- "recurring" = việc lặp lại mỗi tuần (thời khoá biểu học kỳ, ca làm cố định). "days" chỉ dùng: mon, tue, wed, thu, fri, sat, sun. "from"/"to" (định dạng YYYY-MM-DD) là ngày bắt đầu/kết thúc kỳ nếu ảnh có ghi; nếu không có thì bỏ hai trường này.',
+      '- "recurring" = việc lặp lại mỗi tuần (thời khoá biểu học kỳ, ca làm cố định). "days" chỉ dùng: mon, tue, wed, thu, fri, sat, sun. "from"/"to" (YYYY-MM-DD) là ngày bắt đầu/kết thúc kỳ nếu ảnh có ghi; nếu không có thì bỏ hai trường này.',
       '- "events" = việc chỉ xảy ra vào một ngày cụ thể ("date" dạng YYYY-MM-DD). Việc kéo dài nhiều ngày thì thêm "endDate".',
-      '- "status": "busy" cho lịch học/làm/hẹn (mặc định); "free" chỉ khi ảnh nói rõ đó là thời gian rảnh; "maybe" nếu chưa chắc.',
+      '- "status": "busy" (bận), "free" (rảnh) hoặc "maybe" (chưa chắc).',
       '- Giờ theo định dạng 24 giờ "HH:MM". Việc qua đêm thì để end nhỏ hơn start (ví dụ 22:00 → 02:00).',
       '- "label" ngắn gọn (tối đa 5 từ), không ghi thông tin nhạy cảm như số điện thoại, mật khẩu, địa chỉ nhà.',
       '- Không bịa dữ liệu. Mục nào không đọc rõ ngày hoặc giờ thì bỏ qua và nói ngắn gọn bên ngoài khối JSON.',
       '- ' + slot,
-      '- Chỉ trả đúng một khối JSON hợp lệ (không chú thích bên trong).'
-    ].join('\n');
+      '- Tôi có thể gửi thêm ảnh hoặc nhắn thêm chỉ dẫn sau câu lệnh này (ví dụ "bỏ môn X", "thêm giờ ngủ 23:00–07:00 mỗi ngày"). Hãy gộp tất cả và mỗi lần luôn trả lại TOÀN BỘ JSON mới nhất, hợp lệ, không chú thích bên trong.'
+    );
+    return L.join('\n');
   }
 
   function exportData() {
@@ -79,10 +88,21 @@
 
   var Imp = {
     open: function () {
-      var slotInp = h('textarea.inp', { rows: 3, placeholder: 'Ví dụ:\nSlot 1: 07:00–09:15\nSlot 2: 09:30–11:45\n(chỉ cần nếu lịch của bạn ghi theo tiết/slot)', value: U.lsGet('rc_slots', '') });
+      var saved = U.lsGet('rc_imp_opts', {}), opt = { ref: U.today(), kind: saved.kind || 'auto', free: !!saved.free, extra: saved.extra || '', slots: saved.slots || '' };
+      var slotInp = h('textarea.inp', { rows: 3, placeholder: 'Ví dụ:\nSlot 1: 07:00–09:15\nSlot 2: 09:30–11:45\n(chỉ cần nếu lịch của bạn ghi theo tiết/slot)', value: opt.slots });
+      var extraInp = h('textarea.inp', { rows: 2, placeholder: 'Tuỳ chọn. Ví dụ: "bỏ môn Thể dục", "chỉ lấy từ tuần 12", "thêm giờ ngủ 23:00–07:00 mỗi ngày", "các tối thứ 6 tôi rảnh"…', value: opt.extra });
+      var refInp = h('input.inp.sm', { type: 'date', value: opt.ref });
+      var kindBox = h('div.chips'), stBox = h('div.seg.sm');
       var promptBox = h('textarea.inp.mono', { rows: 8, readOnly: true });
-      function refreshPrompt() { U.lsSet('rc_slots', slotInp.value); promptBox.value = buildPrompt(slotInp.value); }
-      slotInp.addEventListener('input', U.debounce(refreshPrompt, 250)); refreshPrompt();
+      function refreshPrompt() {
+        opt.ref = refInp.value || U.today(); opt.extra = extraInp.value; opt.slots = slotInp.value;
+        U.lsSet('rc_imp_opts', { kind: opt.kind, free: opt.free, extra: opt.extra, slots: opt.slots });
+        U.clear(kindBox); KINDS.forEach(function (k) { kindBox.appendChild(h('button.chip' + (opt.kind === k[0] ? '.on' : ''), { type: 'button', onclick: function () { opt.kind = k[0]; refreshPrompt(); } }, k[1])); });
+        U.clear(stBox); [[false, 'Bận'], [true, 'Rảnh']].forEach(function (x) { stBox.appendChild(h('button' + (opt.free === x[0] ? '.on' : ''), { type: 'button', onclick: function () { opt.free = x[0]; refreshPrompt(); } }, x[1])); });
+        promptBox.value = buildPrompt(opt);
+      }
+      var deb = U.debounce(refreshPrompt, 250);
+      slotInp.addEventListener('input', deb); extraInp.addEventListener('input', deb); refInp.addEventListener('input', refreshPrompt); refreshPrompt();
       var paste = h('textarea.inp.mono', { rows: 6, placeholder: 'Dán kết quả JSON của AI vào đây (hoặc chọn file .json bên dưới)' });
       var file = h('input', { type: 'file', accept: '.json,.txt,application/json,text/plain', style: { display: 'none' }, onchange: function (e) { var f = e.target.files[0]; if (!f) return; var r = new FileReader(); r.onload = function () { paste.value = r.result; check(); }; r.readAsText(f); } });
       var result = h('div.imp-result'), parsed = null, modeV = 'replace';
@@ -90,7 +110,7 @@
       if (!hasPrev) modeV = 'add';
       var okBtn = h('button.btn.primary', { disabled: true, onclick: doApply }, 'Nhập vào lịch của tôi');
       function check() {
-        U.clear(result); parsed = Sched.parseImport(paste.value); okBtn.disabled = !parsed.ok;
+        U.clear(result); parsed = Sched.parseImport(paste.value, { ref: refInp.value || U.today() }); okBtn.disabled = !parsed.ok;
         if (!paste.value.trim()) return;
         if (parsed.errors.length) result.appendChild(h('div.note.warn', parsed.errors.map(function (e) { return h('div', e); })));
         if (parsed.ok) {
@@ -114,7 +134,10 @@
         apply(parsed, modeV).then(function () { m.close(); U.toast('Đã nhập ' + (parsed.counts.rec + parsed.counts.one) + ' mục vào lịch của bạn'); }, function (e) { okBtn.disabled = false; U.toast('Lỗi: ' + e.message, { kind: 'err' }); });
       }
       var body = h('div.form.imp',
-        h('div.imp-step', h('b.n', '1'), h('div', h('b', 'Copy câu lệnh này'), h('p.muted.sm', 'Mở một AI có đọc được ảnh (ChatGPT, Gemini, Claude...), dán câu lệnh và đính kèm ảnh chụp lịch của bạn.'),
+        h('div.imp-step', h('b.n', '1'), h('div', h('b', 'Tuỳ chỉnh rồi copy câu lệnh'), h('p.muted.sm', 'Mở một AI có đọc được ảnh (ChatGPT, Gemini, Claude...), dán câu lệnh và đính kèm ảnh chụp lịch của bạn. Bạn vẫn có thể gõ thêm yêu cầu cho AI sau khi dán.'),
+          h('div.fld', h('span', 'Loại ảnh'), kindBox),
+          h('div.grid2', h('div.fld', h('span', 'Ảnh này cho biết lúc bạn…'), stBox), h('label.fld', h('span', 'Hôm nay là (mốc cho AI hiểu "tuần này", "mai")'), refInp)),
+          h('label.fld', h('span', 'Yêu cầu riêng của bạn (tuỳ chọn)'), extraInp),
           promptBox, h('div.row.mt', h('button.btn.primary.sm', { onclick: function () { U.copy(promptBox.value).then(function () { U.toast('Đã copy câu lệnh. Giờ dán vào AI kèm ảnh lịch nhé'); }); } }, U.icon('copy', 16), 'Copy câu lệnh'),
             h('details.slotbox', h('summary', 'Lịch ghi theo tiết/slot? Thêm bảng giờ'), slotInp)))),
         h('div.imp-step', h('b.n', '2'), h('div', h('b', 'Dán kết quả AI trả về'), paste,

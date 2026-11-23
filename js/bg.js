@@ -114,9 +114,10 @@
     W = Math.max(2, Math.round(innerWidth * s)); H = Math.max(2, Math.round(innerHeight * s));
     cv.width = W; cv.height = H; r.init();
   }
+  var held = 0, pauseUntil = 0;
   function loop(now) {
     raf = requestAnimationFrame(loop);
-    var r = R[cur]; if (!r || document.hidden) return;
+    var r = R[cur]; if (!r || document.hidden || held > 0 || now < pauseUntil) return;
     var fps = pf.motion === false ? 0 : 1000 / 40;
     if (now - last < fps) return;
     var dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -176,5 +177,9 @@
     resize: function () { if (cur) { size(); if (pf.motion === false || R[cur].still) drawStill(); } }
   };
   window.addEventListener('resize', (function () { var t; return function () { clearTimeout(t); t = setTimeout(Bg.resize, 200); }; })());
+  /** Tạm dừng nền động cho mượt: hold(+1/-1) khi mở hộp thoại/đang kéo; pauseFor(ms) khi đang cuộn */
+  Bg.hold = function (n) { held = Math.max(0, held + n); };
+  Bg.pauseFor = function (ms) { pauseUntil = performance.now() + ms; };
+  document.addEventListener('scroll', function () { Bg.pauseFor(180); }, { capture: true, passive: true });
   root.Bg = Bg;
 })(window);

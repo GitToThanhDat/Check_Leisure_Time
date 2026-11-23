@@ -65,6 +65,11 @@
   Me.drawHead = function () {
     var ds = days(), s = span(), el = U.clear(Me.headEl);
     function nav(dir) { Me.anchor = Sched.addDays(Me.anchor, dir * s); Me.drawHead(); Me.drawGrid(); }
+    function jump() {
+      var sc = A.sc(A.me.id);
+      U.pickDate({ value: ds[0], title: 'Nhảy tới ngày…', mark: function (d) { return !!(sc.one && sc.one[d]); },
+        onPick: function (d) { Me.anchor = s === 7 ? Sched.startOfWeek(d) : d; Me.drawHead(); Me.drawGrid(); } });
+    }
     var brushes = ['free', 'busy', 'maybe', 'erase'].map(function (b) {
       return h('button.brush.b-' + b + (A.pf.brush === b ? '.on' : ''), { onclick: function () { A.pf.brush = b; A.savePf(); Me.drawHead(); } },
         h('i'), b === 'erase' ? 'Xoá' : ST[b]);
@@ -73,7 +78,7 @@
       h('div.row', h('button.icon-btn', { onclick: function () { nav(-1); }, title: 'Trước' }, U.icon('left')),
         h('button.btn.sm', { onclick: function () { Me.anchor = null; Me.drawHead(); Me.drawGrid(); } }, 'Hôm nay'),
         h('button.icon-btn', { onclick: function () { nav(1); }, title: 'Sau' }, U.icon('right')),
-        h('b.range', U.fmtDay(ds[0]) + ' – ' + U.fmtDay(ds[ds.length - 1]))),
+        h('button.datepick', { title: 'Nhảy tới ngày bất kỳ', onclick: jump }, h('b.range', U.fmtDay(ds[0]) + ' – ' + U.fmtDay(ds[ds.length - 1])), U.icon('cal', 16))),
       h('div.seg.sm', [3, 7].map(function (n) {
         return h('button' + (s === n ? '.on' : ''), { onclick: function () { Me.span = n; U.lsSet('rc_span', n); Me.anchor = null; Me.drawHead(); Me.drawGrid(); } }, n + ' ngày');
       }))));
@@ -107,31 +112,40 @@
     bodyEl.addEventListener('contextmenu', function (e) { if (Me.drag) e.preventDefault(); });
   };
 
-  /* ---------- Kéo để tô ---------- */
-  function cellAt(x, y) { var el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('.cell') : null; }
+  /* ---------- Kéo để tô (tính ô theo toạ độ, cập nhật theo khung hình, tự cuộn khi kéo sát mép) ---------- */
   function onDown(e) {
     if (e.button > 0) return; var cell = e.target.closest('.cell'); if (!cell) return;
     var col = cell.parentNode, touch = e.pointerType === 'touch';
-    var d = Me.drag = { col: col, date: col.dataset.d, i0: +cell.dataset.i, i1: +cell.dataset.i, moved: false, started: !touch, x: e.clientX, y: e.clientY, touch: touch };
-    if (touch) d.timer = setTimeout(function () { d.started = true; if (navigator.vibrate) navigator.vibrate(12); preview(); }, 230);
-    else { preview(); e.preventDefault(); }
+    var d = Me.drag = { col: col, cells: U.$$('.cell', col), sc: col.closest('.wk-scroll'), date: col.dataset.d, i0: +cell.dataset.i, i1: +cell.dataset.i, pa: -1, pb: -1, moved: false, started: false, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, touch: touch, raf: 0 };
+    if (touch) d.timer = setTimeout(function () { start(d); if (navigator.vibrate) navigator.vibrate(12); }, 230);
+    else { start(d); e.preventDefault(); }
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onCancel);
   }
+  function start(d) { if (d.started) return; d.started = true; d.holdOn = true; if (root.Bg) Bg.hold(1); d.col.dataset.brush = A.pf.brush; preview(); }
   function onMove(e) {
     var d = Me.drag; if (!d) return;
     if (!d.started) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 9) onCancel(); return; }
-    var c = cellAt(e.clientX, e.clientY);
-    if (c && c.parentNode === d.col) { var i = +c.dataset.i; if (i !== d.i1) { d.i1 = i; d.moved = true; preview(); } }
+    d.lx = e.clientX; d.ly = e.clientY; if (!d.raf) d.raf = requestAnimationFrame(step);
+  }
+  function step() {
+    var d = Me.drag; if (!d) return; d.raf = 0;
+    var r = d.col.getBoundingClientRect(), i = Math.max(0, Math.min(47, Math.floor((d.ly - r.top) / ROW)));
+    if (i !== d.i1) { d.i1 = i; d.moved = true; preview(); }
+    if (d.sc) {   // kéo sát mép trên/dưới thì tự cuộn
+      var sr = d.sc.getBoundingClientRect(), dy = d.ly < sr.top + 56 ? -12 : d.ly > sr.bottom - 36 ? 12 : 0;
+      if (dy) { d.sc.scrollTop += dy; d.raf = requestAnimationFrame(step); }
+    }
   }
   function preview() {
     var d = Me.drag; if (!d) return; var a = Math.min(d.i0, d.i1), b = Math.max(d.i0, d.i1);
-    U.$$('.cell', d.col).forEach(function (c) { var i = +c.dataset.i; c.classList.toggle('pv', i >= a && i <= b); });
-    d.col.dataset.brush = A.pf.brush;
+    var lo = d.pa < 0 ? a : Math.min(a, d.pa), hi = d.pa < 0 ? b : Math.max(b, d.pb);
+    for (var i = lo; i <= hi; i++) d.cells[i].classList.toggle('pv', i >= a && i <= b);
+    d.pa = a; d.pb = b;
   }
   function end() {
-    var d = Me.drag; if (d && d.timer) clearTimeout(d.timer);
+    var d = Me.drag; if (d && d.timer) clearTimeout(d.timer); if (d && d.raf) cancelAnimationFrame(d.raf);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onCancel);
-    if (d) U.$$('.pv', d.col).forEach(function (c) { c.classList.remove('pv'); });
+    if (d) { d.cells.forEach(function (c) { c.classList.remove('pv'); }); if (d.holdOn && root.Bg) Bg.hold(-1); }
     Me.drag = null; return d;
   }
   function onCancel() { end(); }

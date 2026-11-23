@@ -196,10 +196,20 @@
     free: 'free', rảnh: 'free', ranh: 'free', 'r': 'free',
     maybe: 'maybe', 'có thể': 'maybe', 'co the': 'maybe', tentative: 'maybe', 'linh hoạt': 'maybe'
   };
-  function normDate(v) {
+  /** Chuẩn hoá ngày về YYYY-MM-DD. Nhận: 2026-11-25, 25/11/2026, 25/11/26, và 25/11 (không năm -> chọn năm gần nhất với ref). */
+  function normDate(v, ref) {
     if (!v) return null; var s = String(v).trim(), m;
     if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s))) return m[1] + '-' + pad(+m[2]) + '-' + pad(+m[3]);
     if ((m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/.exec(s))) return m[3] + '-' + pad(+m[2]) + '-' + pad(+m[1]);
+    if ((m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2})$/.exec(s))) return (2000 + +m[3]) + '-' + pad(+m[2]) + '-' + pad(+m[1]);
+    if ((m = /^(\d{1,2})[\/.-](\d{1,2})$/.exec(s)) && ref && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) {
+      var ry = +ref.slice(0, 4), best = null, bd = 1e9;
+      [ry - 1, ry, ry + 1].forEach(function (y) {
+        var c = y + '-' + pad(+m[2]) + '-' + pad(+m[1]), dd = Math.abs((parseDate(c) - parseDate(ref)) / 86400000);
+        if (dd < bd) { bd = dd; best = c; }
+      });
+      return best;
+    }
     return null;
   }
   function extractJson(text) {
@@ -211,7 +221,8 @@
     return t.slice(a, b + 1);
   }
   /** Trả {ok, rec:[...], one:{date:[...]}, errors:[], warnings:[], counts} */
-  function parseImport(text) {
+  function parseImport(text, opt) {
+    var ref = opt && opt.ref;
     var res = { ok: false, rec: [], one: {}, errors: [], warnings: [], counts: { rec: 0, one: 0 } };
     var js = extractJson(text), data;
     if (!js) { res.errors.push('Không tìm thấy JSON. Hãy dán nguyên đoạn AI trả về (bắt đầu bằng { và kết thúc bằng }).'); return res; }
@@ -241,14 +252,14 @@
       if (isNaN(s) || isNaN(e)) { res.warnings.push(w + ': giờ không đọc được (' + r.start + ' - ' + r.end + '), bỏ qua'); return; }
       if (s === e) { res.warnings.push(w + ': giờ bắt đầu = kết thúc, bỏ qua'); return; }
       var item = { d: mask, s: s, e: e, st: parseStatus(r.status, w), lb: String(r.label || r.title || '').slice(0, 60) };
-      var f = normDate(r.from), t = normDate(r.to);
+      var f = normDate(r.from, ref), t = normDate(r.to, ref);
       if (r.from && !f) res.warnings.push(w + ': ngày "from" sai định dạng, bỏ qua giới hạn');
       if (r.to && !t) res.warnings.push(w + ': ngày "to" sai định dạng, bỏ qua giới hạn');
       if (f) item.from = f; if (t) item.to = t;
       res.rec.push(item);
     });
     evs.forEach(function (x, idx) {
-      var w = 'Sự kiện #' + (idx + 1), d1 = normDate(x.date), d2 = normDate(x.endDate || x.date);
+      var w = 'Sự kiện #' + (idx + 1), d1 = normDate(x.date, ref), d2 = normDate(x.endDate || x.date, ref);
       var s = strToMin(x.start), e = strToMin(x.end);
       if (!d1) { res.warnings.push(w + ': ngày không hợp lệ (' + x.date + '), bỏ qua'); return; }
       if (isNaN(s) || isNaN(e)) { res.warnings.push(w + ': giờ không đọc được, bỏ qua'); return; }

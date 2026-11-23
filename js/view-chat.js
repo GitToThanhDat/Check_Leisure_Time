@@ -141,7 +141,7 @@
     var m = C.msgs[id]; if (!m || !C.cid) return;
     var cur = m.rx && m.rx[A.me.id];
     return A.store.set(A.path('chats/' + C.cid + '/' + id + '/rx/' + A.me.id), cur === e ? null : e).catch(function (er) {
-      console.error(er); U.toast('Không thả được cảm xúc. Nếu lỗi lặp lại, hãy dán lại luật bảo mật (database.rules.json) lên Firebase.', { kind: 'err' });
+      console.error(er); U.toast('Không thả được cảm xúc (' + ((er && (er.code || er.message)) || 'lỗi không rõ') + ').', { kind: 'err' });
     });
   };
   C.setReply = function (id) {
@@ -257,7 +257,14 @@
       if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); }
     });
     ta.addEventListener('blur', function () { setTimeout(function () { pop.style.display = 'none'; }, 150); });
-    function send() { var t = ta.value.trim(); if (!t) return; ta.value = ''; grow(); pop.style.display = 'none'; C.send(c.id, t); }
+    function send() {
+      var t = ta.value.trim(); if (!t) return; ta.value = ''; grow(); pop.style.display = 'none';
+      var keep = C.reply, p = C.send(c.id, t);
+      if (p && p.catch) p.catch(function (er) {
+        console.error(er); ta.value = t; grow(); paintMirror(); if (keep && !C.reply) { C.reply = keep; if (C.drawReply) C.drawReply(); }
+        U.toast('Không gửi được tin nhắn (' + ((er && (er.code || er.message)) || 'lỗi không rõ') + '). Hãy thử lại; nếu vẫn lỗi, hãy gửi mình đoạn mã trong ngoặc.', { kind: 'err' });
+      });
+    }
     el.appendChild(pop);
     var rbar = h('div.reply-bar'); rbar.style.display = 'none'; el.appendChild(rbar);
     C.reply = null;

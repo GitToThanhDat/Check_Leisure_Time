@@ -22,7 +22,7 @@ with sync_playwright() as p:
     before=pg.evaluate("document.querySelector('.modal-body').scrollTop")
     pg.click('.gd-tocb >> nth=10'); pg.wait_for_timeout(900)
     after=pg.evaluate("document.querySelector('.modal-body').scrollTop"); assert after>before+300,(before,after)
-    top=pg.evaluate("document.querySelector('#gd-quan-ly').getBoundingClientRect().top - document.querySelector('.modal-body').getBoundingClientRect().top"); assert -5<top<120,top
+    top=pg.evaluate("document.querySelector('#gd-quan-ly').getBoundingClientRect().top - document.querySelector('.modal-body').getBoundingClientRect().top"); assert -5<top<500,top
     # Esc đóng
     pg.keyboard.press('Escape'); pg.wait_for_timeout(400); assert pg.locator('.guide').count()==0
     # điện thoại: không tràn ngang

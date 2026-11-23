@@ -29,7 +29,7 @@
     if (!C.root) return;
     if (kinds.channels || kinds.members) { drawList(); if (C.cid) { if (!cur()) { C.cid = null; A.chatSel = null; stopMsgs(); C.root.classList.remove('has-sel'); drawThreadEmpty(); } else { drawHead(); drawPlan(); var sig = JSON.stringify(cur().nick || {}); if (kinds.members || sig !== C._sig) { C._sig = sig; drawMsgs(); } } } }
   };
-  function stopMsgs() { if (C.unsub) { C.unsub(); C.unsub = null; } C.msgs = {}; }
+  function stopMsgs() { closeMenu(); C.reply = null; if (C.unsub) { C.unsub(); C.unsub = null; } C.msgs = {}; }
 
   function drawList() {
     var el = U.clear(C.listEl), vis = visible(), seen = U.lsGet('rc_seen_' + A.room.id, {});
@@ -99,6 +99,91 @@
     if (last < t.length) out.push(t.slice(last));
     return out;
   }
+
+  /* ---------- Thả cảm xúc & trả lời ---------- */
+  var REACTS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+  function msgText(m, cid) { return snip(m.txt, 1200, cid); }
+  /** Khung trích dẫn tin được trả lời (m.re = {id, by, txt}) */
+  function quoteOf(m, cid) {
+    if (!m.re) return null;
+    return h('button.quote', { type: 'button', title: 'Xem tin gốc', onclick: function (e) { e.stopPropagation(); jumpTo(m.re.id); } },
+      h('b', A.dn(m.re.by, cid)), h('span', m.re.txt || ''));
+  }
+  function jumpTo(id) {
+    var t = C.msgEl && C.msgEl.querySelector('.msg[data-mid="' + id + '"]');
+    if (!t) { U.toast('Tin nhắn gốc đã cũ hoặc không còn.'); return; }
+    t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+    setTimeout(function () { t.classList.remove('flash'); }, 1600);
+  }
+  /** Các chip cảm xúc dưới tin: gom theo biểu tượng, bấm để xem ai đã thả */
+  function reactionsOf(id, m) {
+    var rx = m.rx || {}, by = {}, order = [];
+    Object.keys(rx).forEach(function (uid) { if (!A.members[uid]) return; var e = rx[uid]; if (typeof e !== 'string') return; if (!by[e]) { by[e] = []; order.push(e); } by[e].push(uid); });
+    if (!order.length) return null;
+    order.sort(function (a, b) { return by[b].length - by[a].length || REACTS.indexOf(a) - REACTS.indexOf(b); });
+    var total = order.reduce(function (n, e) { return n + by[e].length; }, 0);
+    return h('button.rxs' + (rx[A.me.id] ? '.mine' : ''), { type: 'button', title: 'Xem ai đã thả cảm xúc', onclick: function (e) { e.stopPropagation(); showReactors(id); } },
+      order.slice(0, 3).map(function (e) { return h('span.rx-i', e); }), h('span.rx-n', String(total)));
+  }
+  function showReactors(id) {
+    var m = C.msgs[id]; if (!m || !m.rx) return;
+    var cid = C.cid, rx = m.rx, rows = Object.keys(rx).filter(function (uid) { return A.members[uid] && typeof rx[uid] === 'string'; })
+      .sort(function (a, b) { return REACTS.indexOf(rx[a]) - REACTS.indexOf(rx[b]); });
+    var md;
+    var list = h('div.rx-list', rows.map(function (uid) {
+      var me = uid === A.me.id;
+      return h('div.rx-row2' + (me ? '.me' : ''), U.avatar(A.members[uid], 30), h('div.rx-nm', h('b', A.dn(uid, cid)), me ? h('small.muted', 'Bấm để gỡ cảm xúc') : null), h('span.rx-big', rx[uid]));
+    }));
+    rows.forEach(function (uid, i) { if (uid === A.me.id) list.children[i].onclick = function () { C.react(id, rx[uid]); md.close(); }; });
+    md = U.modal({ title: 'Cảm xúc (' + rows.length + ')', body: list });
+  }
+  C.react = function (id, e) {
+    var m = C.msgs[id]; if (!m || !C.cid) return;
+    var cur = m.rx && m.rx[A.me.id];
+    return A.store.set(A.path('chats/' + C.cid + '/' + id + '/rx/' + A.me.id), cur === e ? null : e).catch(function (er) {
+      console.error(er); U.toast('Không thả được cảm xúc. Nếu lỗi lặp lại, hãy dán lại luật bảo mật (database.rules.json) lên Firebase.', { kind: 'err' });
+    });
+  };
+  C.setReply = function (id) {
+    var m = C.msgs[id]; if (!m) return;
+    C.reply = { id: id, by: m.by, txt: snip(m.txt, 90, C.cid) };
+    if (C.drawReply) C.drawReply(); if (C.focusTa) C.focusTa();
+  };
+  /* Menu nổi: hàng biểu tượng + Trả lời / Sao chép */
+  function closeMenu() {
+    if (!C.menu) return; C.menu.remove(); C.menu = null;
+    document.removeEventListener('pointerdown', C._mOut, true); document.removeEventListener('keydown', C._mKey, true);
+    if (C.msgEl) C.msgEl.removeEventListener('scroll', closeMenu);
+  }
+  C.closeMenu = closeMenu;
+  function openMenu(id, anchor) {
+    closeMenu(); var m = C.msgs[id]; if (!m) return;
+    var mineR = m.rx && m.rx[A.me.id], cid = C.cid;
+    var menu = h('div.rx-menu', { role: 'menu' },
+      h('div.rx-pick', REACTS.map(function (e) { return h('button.rx-e' + (mineR === e ? '.on' : ''), { type: 'button', title: e, onclick: function () { closeMenu(); C.react(id, e); } }, e); })),
+      h('div.rx-acts',
+        h('button', { type: 'button', onclick: function () { closeMenu(); C.setReply(id); } }, U.icon('reply', 16), 'Trả lời'),
+        h('button', { type: 'button', onclick: function () { closeMenu(); U.copy(msgText(m, cid)).then(function () { U.toast('Đã copy tin nhắn'); }); } }, U.icon('copy', 16), 'Sao chép')));
+    document.body.appendChild(menu);
+    var r = anchor.getBoundingClientRect(), w = menu.offsetWidth, hh = menu.offsetHeight, mine = m.by === A.me.id;
+    var left = mine ? r.right - w : r.left; left = Math.max(8, Math.min(left, innerWidth - w - 8));
+    var top = r.top - hh - 6; if (top < 8) top = Math.min(r.bottom + 6, innerHeight - hh - 8);
+    menu.style.left = left + 'px'; menu.style.top = Math.max(8, top) + 'px';
+    C.menu = menu;
+    C._mOut = function (e) { if (!menu.contains(e.target)) closeMenu(); };
+    C._mKey = function (e) { if (e.key === 'Escape') closeMenu(); };
+    document.addEventListener('pointerdown', C._mOut, true); document.addEventListener('keydown', C._mKey, true);
+    if (C.msgEl) C.msgEl.addEventListener('scroll', closeMenu, { passive: true });
+  }
+  /** Nhấn giữ (điện thoại) hoặc bấm chuột phải (máy tính) lên bong bóng để mở menu */
+  function attachMenu(bub, id) {
+    var timer = null, sx = 0, sy = 0;
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+    bub.addEventListener('touchstart', function (e) { var t = e.touches[0]; sx = t.clientX; sy = t.clientY; stop(); timer = setTimeout(function () { timer = null; openMenu(id, bub); }, 420); }, { passive: true });
+    bub.addEventListener('touchmove', function (e) { var t = e.touches[0]; if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) stop(); }, { passive: true });
+    bub.addEventListener('touchend', stop); bub.addEventListener('touchcancel', stop);
+    bub.addEventListener('contextmenu', function (e) { e.preventDefault(); openMenu(id, bub); });
+  }
   function drawMsgs() {
     var el = C.msgEl; if (!el) return;
     var near = el.scrollHeight - el.scrollTop - el.clientHeight < 80 || C.stick; U.clear(el);
@@ -109,9 +194,13 @@
       if (day !== prevDay) { el.appendChild(h('div.daysep', day === U.today() ? 'Hôm nay' : U.fmtDate(day, true))); prevDay = day; prev = null; }
       var cont = prev && prev.by === m.by && m.ts - prev.ts < 180000;
       var tagged = (m.mn || []).indexOf(A.me.id) >= 0 || (m.mn || []).indexOf('all') >= 0;
-      el.appendChild(h('div.msg' + (mine ? '.mine' : '') + (cont ? '.cont' : '') + (tagged && !mine ? '.tagged' : ''),
+      var bub = h('div.bub', !mine && !cont ? h('div.who', A.dn(m.by, cid)) : null, quoteOf(m, cid), h('div.tx', renderText(m.txt || '', cid)), h('small.ts', Sched.minToStr(new Date(m.ts).getHours() * 60 + new Date(m.ts).getMinutes())));
+      attachMenu(bub, x.id);
+      var acts = h('div.macts', h('button.icon-btn.sm', { title: 'Thả cảm xúc', onclick: function () { openMenu(x.id, bub); } }, U.icon('smile', 16)),
+        h('button.icon-btn.sm', { title: 'Trả lời', onclick: function () { C.setReply(x.id); } }, U.icon('reply', 16)));
+      el.appendChild(h('div.msg' + (mine ? '.mine' : '') + (cont ? '.cont' : '') + (tagged && !mine ? '.tagged' : '') + (m.rx ? '.has-rx' : ''), { dataset: { mid: x.id } },
         mine ? null : (cont ? h('span.av-sp') : U.avatar(u, 30)),
-        h('div.bub', !mine && !cont ? h('div.who', A.dn(m.by, cid)) : null, h('div.tx', renderText(m.txt || '', cid)), h('small.ts', Sched.minToStr(new Date(m.ts).getHours() * 60 + new Date(m.ts).getMinutes())))));
+        h('div.bcol', bub, reactionsOf(x.id, m)), acts));
       prev = m;
     });
     if (near) el.scrollTop = el.scrollHeight; C.stick = false;
@@ -164,11 +253,21 @@
         if (e.key === 'Enter' || e.key === 'Tab') { pick(cands[sel]); e.preventDefault(); return; }
         if (e.key === 'Escape') { pop.style.display = 'none'; return; }
       }
+      if (e.key === 'Escape' && C.reply) { C.reply = null; C.drawReply(); return; }
       if (e.key === 'Enter' && !e.shiftKey && !coarse) { e.preventDefault(); send(); }
     });
     ta.addEventListener('blur', function () { setTimeout(function () { pop.style.display = 'none'; }, 150); });
     function send() { var t = ta.value.trim(); if (!t) return; ta.value = ''; grow(); pop.style.display = 'none'; C.send(c.id, t); }
     el.appendChild(pop);
+    var rbar = h('div.reply-bar'); rbar.style.display = 'none'; el.appendChild(rbar);
+    C.reply = null;
+    C.drawReply = function () {
+      U.clear(rbar); var r = C.reply; if (!r) { rbar.style.display = 'none'; return; } rbar.style.display = '';
+      rbar.appendChild(U.icon('reply', 16));
+      rbar.appendChild(h('div.rb-t', h('b', 'Đang trả lời ' + (r.by === A.me.id ? 'chính mình' : A.dn(r.by, c.id))), h('span', r.txt)));
+      rbar.appendChild(h('button.icon-btn.sm', { title: 'Bỏ trả lời', onclick: function () { C.reply = null; C.drawReply(); } }, U.icon('x', 16)));
+    };
+    C.focusTa = function () { ta.focus(); };
     el.appendChild(h('div.comp-row', wrap, h('button.btn.primary.sendbtn', { onclick: send, title: 'Gửi' }, U.icon('send', 18))));
     paintMirror();
     if (!coarse) setTimeout(function () { ta.focus(); }, 80);
@@ -188,11 +287,15 @@
     var c = A.channels[cid]; if (!c) return;
     var mem = chMembers(Object.assign({ id: cid }, c)), p = C.parseMentions(raw, mem, cid), id = A.store.newKey(A.path('chats/' + cid)), ts = A.store.now();
     var up = {}, memberIds = mem.map(function (m) { return m.id; });
-    up[A.path('chats/' + cid + '/' + id)] = { by: A.me.id, txt: p.text, ts: ts, mn: p.ids };
+    var msg = { by: A.me.id, txt: p.text, ts: ts, mn: p.ids }, rp = C.reply && C.cid === cid ? C.reply : null;
+    if (rp) msg.re = { id: rp.id, by: rp.by, txt: rp.txt };
+    up[A.path('chats/' + cid + '/' + id)] = msg;
     up[A.path('channels/' + cid + '/last')] = { by: A.me.id, txt: p.text.slice(0, 160), ts: ts };
     var targets = p.ids.indexOf('all') >= 0 ? memberIds : p.ids.filter(function (x) { return memberIds.indexOf(x) >= 0; });
     var all = p.ids.indexOf('all') >= 0;
     Object.assign(up, A.notifyUpdates(targets, { t: all ? 'all' : 'mention', ch: cid, txt: snip(p.text, 100, cid) }));
+    if (rp && memberIds.indexOf(rp.by) >= 0 && targets.indexOf(rp.by) < 0) Object.assign(up, A.notifyUpdates([rp.by], { t: 'reply', ch: cid, txt: snip(p.text, 100, cid) }));
+    if (rp) { C.reply = null; if (C.drawReply) C.drawReply(); }
     C.stick = true;
     return A.store.update(up);
   };

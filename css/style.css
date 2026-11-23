@@ -366,3 +366,42 @@ details summary { cursor: pointer; color: var(--muted); font-size: .85rem; } .wa
 .gd-note.tip { border-color: var(--free); } .gd-note.tip b { background: var(--free); color: #053b27; }
 .modal.wide .guide { min-width: 0; }
 @media (max-width: 520px) { .gd-toc { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- Thả cảm xúc & trả lời tin nhắn ---------- */
+.bcol { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 100%; }
+.msg.mine .bcol { align-items: flex-end; }
+.msg.has-rx { margin-bottom: 10px; }
+.macts { display: flex; gap: 2px; align-self: center; opacity: 0; transition: opacity .12s; }
+.msg:hover .macts, .macts:focus-within { opacity: 1; }
+@media (hover: none) { .macts { display: none; } }
+.icon-btn.sm { width: 28px; height: 28px; border-radius: 9px; color: var(--muted); }
+.icon-btn.sm:hover { color: var(--text); background: var(--field); }
+.bub { -webkit-touch-callout: none; }
+.quote { display: block; width: 100%; text-align: left; margin: 0 0 5px; padding: 4px 8px; border-radius: 8px; border-left: 3px solid var(--accent); background: rgba(128,128,160,.16); font-size: .82rem; line-height: 1.3; color: inherit; cursor: pointer; }
+.quote b { display: block; font-size: .74rem; color: var(--accent); }
+.quote span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; opacity: .85; white-space: normal; }
+.msg.mine .quote { background: rgba(255,255,255,.2); border-left-color: #fff; }
+.msg.mine .quote b { color: #fff; }
+.rxs { display: inline-flex; align-items: center; gap: 2px; margin: -6px 8px 0; padding: 1px 7px 1px 5px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(0,0,0,.18); font-size: .82rem; line-height: 1.5; position: relative; z-index: 1; }
+[data-theme=light] .rxs { background: rgba(255,255,255,.96); } [data-theme=dark] .rxs { background: rgba(30,36,72,.96); }
+.rxs.mine { border-color: var(--accent); }
+.rx-n { font-size: .74rem; color: var(--muted); margin-left: 2px; font-weight: 600; }
+.msg.flash .bub { animation: rxflash 1.5s ease; }
+@keyframes rxflash { 0%, 60% { box-shadow: 0 0 0 3px var(--accent2); } 100% { box-shadow: none; } }
+.rx-menu { position: fixed; z-index: 90; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 18px; background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--line); box-shadow: var(--shadow); animation: rxpop .14s ease; }
+[data-theme=light] .rx-menu { background: rgba(255,255,255,.97); } [data-theme=dark] .rx-menu { background: rgba(24,28,58,.98); }
+@keyframes rxpop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+.rx-pick { display: flex; gap: 2px; }
+.rx-e { width: 42px; height: 42px; border-radius: 50%; font-size: 1.45rem; line-height: 1; display: grid; place-items: center; transition: transform .12s, background .12s; }
+.rx-e:hover { transform: scale(1.2); background: var(--field); } .rx-e.on { background: var(--mention-bg); box-shadow: 0 0 0 2px var(--accent) inset; }
+.rx-acts { display: flex; gap: 4px; border-top: 1px solid var(--line); padding-top: 4px; }
+.rx-acts button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; border-radius: 12px; font-size: .88rem; }
+.rx-acts button:hover { background: var(--field); }
+.rx-list { display: flex; flex-direction: column; gap: 4px; max-height: 50dvh; overflow-y: auto; }
+.rx-row2 { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; }
+.rx-row2.me { cursor: pointer; background: var(--field); }
+.rx-nm { flex: 1; min-width: 0; display: flex; flex-direction: column; } .rx-big { font-size: 1.4rem; }
+.reply-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 6px 6px 6px 10px; border-radius: 12px; border-left: 3px solid var(--accent); background: var(--field); font-size: .85rem; }
+.rb-t { flex: 1; min-width: 0; display: flex; flex-direction: column; } .rb-t b { font-size: .78rem; color: var(--accent); }
+.rb-t span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+@media (max-width: 420px) { .rx-e { width: 38px; height: 38px; } }

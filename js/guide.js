@@ -95,7 +95,10 @@
         '**Cả phòng**: kênh chung, ai trong phòng cũng thấy.',
         '**Nhóm nhỏ**: bấm nút **+** ở đầu tab Chat → **Tạo nhóm chat**, đặt tên và chọn thành viên. Mọi thành viên trong nhóm đều có thể đổi tên nhóm (trừ khi phòng đã giới hạn quyền đổi tên).',
         '**Gọi tên**: gõ **@** rồi chọn tên để nhắc một người, hoặc **@all** để nhắc cả nhóm. Tên được gọi hiện màu xanh và người đó nhận thông báo.',
-        '**Biệt danh**: nếu ai đó đã đặt biệt danh trong phòng, bạn sẽ thấy biệt danh đó thay cho tên thật trong mọi đoạn chat.'] },
+        '**Biệt danh**: nếu ai đó đã đặt biệt danh trong phòng, bạn sẽ thấy biệt danh đó thay cho tên thật trong mọi đoạn chat.',
+        '**Thả cảm xúc**: trên điện thoại, **nhấn giữ** vào tin nhắn; trên máy tính, rê chuột vào tin rồi bấm biểu tượng mặt cười (hoặc bấm chuột phải). Chọn một trong 6 biểu tượng 👍 ❤️ 😂 😮 😢 😡. Mỗi người chỉ có một cảm xúc cho mỗi tin: chọn biểu tượng khác để đổi, chọn lại đúng biểu tượng đó để gỡ. Bấm vào chip cảm xúc dưới tin để xem ai đã thả.',
+        '**Trả lời tin nhắn**: trong cùng menu đó chọn **Trả lời**. Tin của bạn sẽ kèm khung trích dẫn tin gốc, bấm vào khung để nhảy về tin gốc. Người được trả lời nhận thông báo. Bấm dấu x (hoặc phím Esc) để bỏ trả lời.',
+        '**Sao chép**: cũng trong menu trên, để copy nội dung tin nhắn.'] },
       { h: 'Kèo hẹn (rủ đi chơi)' },
       { ul: [
         'Kèo được tạo từ nút **Rủ** ở tab Nhóm, hoặc **Rủ đi chơi** trong Chat.',

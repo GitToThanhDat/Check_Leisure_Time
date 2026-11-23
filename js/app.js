@@ -622,6 +622,7 @@
     var who = A.dn(n.v.by, n.v.ch), ch = A.channels[n.v.ch], cn = ch ? ch.title : 'một nhóm';
     if (n.v.t === 'invite') return { title: who + ' rủ bạn: ' + cn, body: n.v.txt || '' };
     if (n.v.t === 'all') return { title: who + ' gọi mọi người trong ' + cn, body: n.v.txt || '' };
+    if (n.v.t === 'reply') return { title: who + ' trả lời tin nhắn của bạn trong ' + cn, body: n.v.txt || '' };
     return { title: who + ' nhắc bạn trong ' + cn, body: n.v.txt || '' };
   }
   function alertNotif(n) {

@@ -96,7 +96,15 @@
             ".read": "auth != null && root.child('rooms/' + $room + '/members/' + auth.uid).exists() && (root.child('rooms/' + $room + '/channels/' + $cid + '/kind').val() === 'room' || root.child('rooms/' + $room + '/channels/' + $cid + '/members/' + auth.uid).exists())",
             ".write": "auth != null && root.child('rooms/' + $room + '/members/' + auth.uid).exists() && (root.child('rooms/' + $room + '/channels/' + $cid + '/kind').val() === 'room' || root.child('rooms/' + $room + '/channels/' + $cid + '/members/' + auth.uid).exists() || !root.child('rooms/' + $room + '/channels/' + $cid).exists() || !newData.exists())",
             "$msg": {
-              ".validate": "newData.hasChildren(['by', 'txt', 'ts']) && newData.child('by').val() === auth.uid && newData.child('txt').isString() && newData.child('txt').val().length <= 1200"
+              ".validate": "newData.hasChildren(['by', 'txt', 'ts']) && newData.child('by').val() === auth.uid && newData.child('txt').isString() && newData.child('txt').val().length <= 1200",
+              "re": {
+                ".validate": "newData.hasChildren(['id', 'by', 'txt']) && newData.child('txt').isString() && newData.child('txt').val().length <= 200"
+              },
+              "rx": {
+                "$uid": {
+                  ".validate": "$uid === auth.uid && newData.isString() && newData.val().length <= 8"
+                }
+              }
             }
           }
         },
